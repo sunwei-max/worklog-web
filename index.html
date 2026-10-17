@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>个人工作量统计 · 网页版</title>
+<style>
+  :root{
+    --bg1:#eef3f8; --bg2:#dfe9f3;
+    --card:#ffffff; --line:#e2e8f0;
+    --txt:#1f2d3d; --sub:#7b8a9b; --gold:#e08a00; --blue:#2f80ed; --red:#e35d5b;
+    --green:#27ae60;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:linear-gradient(160deg,var(--bg1),var(--bg2));
+    color:var(--txt); min-height:100vh; padding-bottom:80px;
+  }
+  .wrap{max-width:760px; margin:0 auto; padding:14px 14px 90px;}
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:6px 4px 12px;
+  }
+  .topbar h1{font-size:20px; margin:0; font-weight:800; letter-spacing:.5px;}
+  .topbar .who{font-size:13px; color:var(--sub);}
+  .topbar .who b{color:var(--blue); font-weight:700;}
+
+  .datebar{
+    display:flex; align-items:center; gap:10px; margin:0 0 12px;
+    background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px;
+    box-shadow:0 2px 8px rgba(20,50,90,.04);
+  }
+  .datebar label{font-size:14px; color:var(--sub); white-space:nowrap;}
+  .datebar input[type=date]{border:none; color:var(--txt); font-size:16px; font-weight:700; background:transparent; flex:1; min-width:0;}
+  .search{
+    width:100%; background:var(--card); border:1px solid var(--line); border-radius:14px;
+    padding:12px 14px; color:var(--txt); font-size:15px; margin-bottom:10px; outline:none;
+  }
+  .search::placeholder{color:var(--sub);}
+
+  .summary{display:flex; gap:10px; margin:0 0 16px;}
+  .summary .s{
+    flex:1; background:var(--card); border:1px solid var(--line); border-radius:14px;
+    padding:12px 6px; text-align:center; box-shadow:0 2px 8px rgba(20,50,90,.04);
+  }
+  .summary .s .v{font-size:24px; font-weight:800; color:var(--gold);}
+  .summary .s .l{font-size:12px; color:var(--sub); margin-top:3px;}
+
+  .group-title{font-size:13px; color:var(--blue); font-weight:700; margin:16px 4px 6px; letter-spacing:.5px;}
+  .cat{
+    display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--line);
+    border-radius:14px; padding:10px 12px; margin-bottom:8px; box-shadow:0 1px 4px rgba(20,50,90,.03);
+  }
+  .cat .ci{flex:1; min-width:0;}
+  .cat .cn{font-size:15px; font-weight:600;}
+  .cat .cnote{font-size:12px; color:var(--sub); margin-top:2px;}
+  .cat.deduct .cn{color:var(--red);}
+  .cc{display:flex; align-items:center; gap:6px;}
+  .cc button{
+    width:34px; height:34px; border-radius:10px; border:none; font-size:20px; font-weight:800;
+    background:#eef2f7; color:var(--txt);
+  }
+  .cc button:active{transform:scale(.92);}
+  .cc .val{
+    width:54px; text-align:center; background:#f4f7fb; border:1px solid var(--line); border-radius:9px;
+    color:var(--gold); font-size:16px; font-weight:700; padding:7px 2px;
+  }
+  .cc.deduct .val{color:var(--red);}
+  .ctext{
+    width:100%; margin-top:7px; background:#f4f7fb; border:1px solid var(--line); border-radius:9px;
+    color:var(--txt); font-size:13px; padding:8px 10px; outline:none;
+  }
+  .ctext::placeholder{color:var(--sub);}
+  .empty{text-align:center; color:var(--sub); padding:40px 0; font-size:14px;}
+
+  /* 月报 */
+  .monthbar{display:flex; align-items:center; justify-content:space-between; margin:0 0 12px;}
+  .monthbar .ml{font-size:20px; font-weight:800;}
+  .monthbar button{
+    background:var(--card); border:1px solid var(--line); color:var(--txt); border-radius:12px;
+    padding:8px 18px; font-size:18px; font-weight:700;
+  }
+  .export-btn{
+    width:100%; margin:0 0 18px; background:linear-gradient(135deg,#ff8a50,#f4511e); color:#fff; border:none;
+    border-radius:16px; padding:16px; font-size:17px; font-weight:800; box-shadow:0 8px 20px rgba(244,81,30,.3);
+  }
+  .export-btn:active{transform:scale(.98);}
+  .mrow{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin-bottom:8px;}
+  .mrow .mh{display:flex; justify-content:space-between; align-items:center;}
+  .mrow .mn{font-size:15px; font-weight:600;}
+  .mrow .mt{font-size:17px; font-weight:800; color:var(--gold);}
+  .mrow .mdet{font-size:12px; color:var(--sub); margin-top:8px; display:none; flex-wrap:wrap; gap:6px 14px;}
+  .mrow.open .mdet{display:flex;}
+  .mrow .mdet span{background:#f4f7fb; border-radius:8px; padding:3px 8px;}
+  .mrow .mtxt{font-size:12px; color:var(--red); margin-top:6px; display:none; white-space:pre-wrap;}
+  .mrow.open .mtxt{display:block;}
+
+  /* 设置 */
+  .card{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; margin-bottom:14px; box-shadow:0 1px 5px rgba(20,50,90,.03);}
+  .card h3{margin:0 0 12px; font-size:16px; color:var(--blue);}
+  .card label{font-size:13px; color:var(--sub); display:block; margin:10px 0 4px;}
+  .card input[type=text], .card select, .card textarea{
+    width:100%; background:#f4f7fb; border:1px solid var(--line); border-radius:10px;
+    color:var(--txt); font-size:14px; padding:10px 12px; outline:none;
+  }
+  .btn{
+    background:#eef2f7; border:1px solid var(--line); color:var(--txt); border-radius:12px;
+    padding:12px; font-size:14px; font-weight:600;
+  }
+  .btn.primary{background:linear-gradient(135deg,#42a5f5,#1e88e5); color:#fff; border:none;}
+  .btn.red{background:rgba(227,93,91,.12); color:var(--red); border:1px solid rgba(227,93,91,.3);}
+  .btn:active{transform:scale(.98);}
+  .row2{display:flex; gap:10px;}
+  .row2 .btn{flex:1;}
+  .clist{margin-top:10px; max-height:260px; overflow:auto;}
+  .clist .ci{
+    display:flex; align-items:center; justify-content:space-between; padding:9px 4px;
+    border-bottom:1px solid var(--line); font-size:14px;
+  }
+  .clist .ci .cg{font-size:12px; color:var(--sub); margin-left:8px;}
+  .clist .ci button{background:rgba(227,93,91,.14); color:var(--red); border:none; border-radius:9px; padding:6px 14px; font-size:13px;}
+  .about{font-size:12px; color:var(--sub); line-height:1.7;}
+
+  /* tabbar */
+  .tabbar{
+    position:fixed; left:0; right:0; bottom:0; display:flex; background:rgba(255,255,255,.96);
+    border-top:1px solid var(--line); max-width:760px; margin:0 auto; backdrop-filter:blur(8px);
+  }
+  .tabbar .tb{flex:1; text-align:center; padding:10px 0 12px; color:var(--sub); font-size:12px;}
+  .tabbar .tb.active{color:var(--blue); font-weight:800;}
+  .tabbar .tb .ic{font-size:22px; display:block; margin-bottom:2px;}
+  .hidden{display:none;}
+  .toast{
+    position:fixed; left:50%; top:38%; transform:translateX(-50%); background:rgba(31,45,61,.92); color:#fff;
+    padding:12px 20px; border-radius:12px; font-size:14px; z-index:99; opacity:0; transition:opacity .2s; pointer-events:none;
+  }
+  .toast.show{opacity:1;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1>个人工作量统计</h1>
+    <div class="who" id="whoSub">本地保存 · 未设置姓名</div>
+  </div>
+
+  <!-- 打卡 -->
+  <section id="tab-record">
+    <div class="datebar">
+      <label>日期</label>
+      <input type="date" id="recDate" />
+    </div>
+    <input class="search" id="recSearch" placeholder="搜索项目（如：急诊、剖宫、抢救）" />
+    <div class="summary">
+      <div class="s"><div class="v" id="smToday">0</div><div class="l">今日合计</div></div>
+      <div class="s"><div class="v" id="smMonth">0</div><div class="l">本月合计</div></div>
+    </div>
+    <div id="recList"></div>
+  </section>
+
+  <!-- 月报 -->
+  <section id="tab-month" class="hidden">
+    <div class="monthbar">
+      <button id="prevM">‹</button>
+      <div class="ml" id="monthLabel">—</div>
+      <button id="nextM">›</button>
+    </div>
+    <button class="export-btn" id="exportBtn">📤 导出 {{本月}} 工作量表格（.xlsx）</button>
+    <div id="monthList"></div>
+  </section>
+
+  <!-- 设置 -->
+  <section id="tab-settings" class="hidden">
+    <div class="card">
+      <h3>基本信息</h3>
+      <label>姓名（导出标题 / 文件名用，如：王娇娇）</label>
+      <input type="text" id="setName" placeholder="如：王娇娇" />
+    </div>
+    <div class="card">
+      <h3>类别管理</h3>
+      <label>新增类别名称</label>
+      <input type="text" id="newCatName" placeholder="类别名称" />
+      <div class="row2" style="margin-top:8px;">
+        <select id="newCatGroup"></select>
+        <input type="text" id="newCatNote" placeholder="提示/说明（可空）" />
+      </div>
+      <div class="row2" style="margin-top:8px;">
+        <label style="margin:0; display:flex; align-items:center; gap:6px; color:var(--txt); font-size:13px;">
+          <input type="checkbox" id="newCatNeg" style="width:auto;" /> 可填负分（扣分项）
+        </label>
+        <input type="text" id="newCatText" placeholder="文字标签(如:原因)" />
+      </div>
+      <button class="btn primary" style="width:100%; margin-top:10px;" id="addCat">添加类别</button>
+      <div class="clist" id="catList"></div>
+      <button class="btn" style="width:100%; margin-top:10px;" id="restoreCat">恢复默认全部类别</button>
+    </div>
+    <div class="card">
+      <h3>数据备份</h3>
+      <div class="row2">
+        <button class="btn" id="expJson">导出备份(.json)</button>
+        <button class="btn" id="impJson">导入备份</button>
+      </div>
+      <input type="file" id="impFile" accept="application/json" class="hidden" />
+    </div>
+    <div class="card">
+      <h3>清空记录</h3>
+      <div class="row2">
+        <button class="btn red" id="clearMonth">清空本月</button>
+        <button class="btn red" id="clearAll">清空全部</button>
+      </div>
+    </div>
+    <div class="card about">
+      数据保存在本浏览器（localStorage）。换设备或清缓存会丢失，重要数据请定期「导出备份」。<br>
+      导出 .xlsx 格式与你提供的「个人工作量统计」原表一致（等线字体 / 列宽 / 边框 / 扣分项规则），可用 WPS / Excel 打开。<br>
+      网页版，无需微信、无需服务器，双击文件即可使用；把本文件发给同事，各自在本人电脑填报，数据互不干扰。
+    </div>
+  </section>
+</div>
+
+<div class="tabbar">
+  <div class="tb active" data-tab="record"><span class="ic">📋</span>打卡</div>
+  <div class="tb" data-tab="month"><span class="ic">📊</span>月报</div>
+  <div class="tb" data-tab="settings"><span class="ic">⚙️</span>设置</div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================================
+ *  个人工作量统计 · 网页版（本地用，功能与小程序一致）
+ *  - 数据存 localStorage（本机），多人各自使用互不干扰
+ *  - 导出复用小程序验证过的真 .xlsx 生成器（与原表 1:1）
+ * ========================================================================= */
+(function(){
+"use strict";
+
+/* ---------- 种子类别（取自科室《个人工作量统计》原表） ---------- */
+var TEXT_LABEL_MAP = {
+  '锦旗、感谢信':'致谢人员名单',
+  '首次病程记录':'书写者',
+  '疑难讨论':'书写者',
+  'MDT讨论':'书写者',
+  '抢救记录':'书写者',
+  '危重孕产妇、新生儿死亡评审（准备PPT）':'病例/主题',
+  '危重孕产妇、新生儿死亡评审（参会并汇报PPT）':'病例/主题',
+  '医院活动（孕妇学校讲课、义诊等）':'活动名称',
+  '扣分项':'原因'
+};
+var NEGATIVE_SET = {'扣分项':true};
+var SEED_CATS = [
+  {group:'值班排班',name:'一线值班',note:'值班日填“1”，余空'},
+  {group:'值班排班',name:'二线值班',note:'值班日填“1”，余空'},
+  {group:'值班排班',name:'急诊班',note:'值班日填“1”，余空'},
+  {group:'备班',name:'一线备班（未来院）',note:'没来填“1”，来了不填'},
+  {group:'备班',name:'二线备班（未来院）',note:'没来填“1”，来了不填'},
+  {group:'备班',name:'三线备班（未来院）',note:'没来填“1”，来了不填'},
+  {group:'备班',name:'各类备班来院',note:'按“日”统计，如急诊班参与备班，记0.5日'},
+  {group:'备班',name:'非值班备班应急到岗',note:'与备班不重复，与择时剖宫产不重复'},
+  {group:'急诊与门诊',name:'急诊人次',note:'急诊看诊人次'},
+  {group:'记录书写',name:'首次病程记录',note:'书写者填'},
+  {group:'记录书写',name:'疑难讨论',note:'书写者填'},
+  {group:'记录书写',name:'MDT讨论',note:'书写者填'},
+  {group:'记录书写',name:'抢救记录',note:'书写者填'},
+  {group:'床日数',name:'床日数（普通）',note:''},
+  {group:'床日数',name:'床日数（病重/危）',note:''},
+  {group:'床日数',name:'床日数（ICU）',note:''},
+  {group:'产程管理',name:'产程管理（平产）',note:'二线、三线填，参与管理可得分'},
+  {group:'产程管理',name:'产程管理（难产）',note:'二线、三线填，需完成分娩'},
+  {group:'剖宫产',name:'剖宫产（常规）术者',note:''},
+  {group:'剖宫产',name:'剖宫产（常规）一助',note:''},
+  {group:'剖宫产',name:'剖宫产（常规）二助',note:''},
+  {group:'剖宫产',name:'剖宫产（复杂）术者',note:''},
+  {group:'剖宫产',name:'剖宫产（复杂）一助',note:''},
+  {group:'剖宫产',name:'剖宫产（复杂）二助',note:''},
+  {group:'手术',name:'三、四级手术（术者）',note:''},
+  {group:'手术',name:'三、四级手术（一助）',note:''},
+  {group:'手术',name:'三、四级手术（二助）',note:''},
+  {group:'手术',name:'MDT手术（术者）',note:'MDT手术：需要其他科室上台协助完成手术'},
+  {group:'手术',name:'MDT手术（一助）',note:''},
+  {group:'手术',name:'MDT手术（二助）',note:''},
+  {group:'手术',name:'小手术',note:''},
+  {group:'手术',name:'外倒转',note:''},
+  {group:'手术',name:'宫颈环扎',note:''},
+  {group:'抢救',name:'小抢救（主持）',note:''},
+  {group:'抢救',name:'小抢救（参与）',note:''},
+  {group:'抢救',name:'中抢救（主持）',note:''},
+  {group:'抢救',name:'中抢救（参与）',note:''},
+  {group:'教学与活动',name:'科室宣传/篇',note:''},
+  {group:'教学与活动',name:'医院活动（孕妇学校讲课、义诊等）',note:''},
+  {group:'教学与活动',name:'科室业务学习讲课/次',note:''},
+  {group:'教学与活动',name:'参与应急演练/次（主持）',note:''},
+  {group:'教学与活动',name:'参与应急演练/次（参与）',note:''},
+  {group:'教学与活动',name:'危重孕产妇、新生儿死亡评审（准备PPT）',note:''},
+  {group:'教学与活动',name:'危重孕产妇、新生儿死亡评审（参会并汇报PPT）',note:''},
+  {group:'教学与活动',name:'新员工带教/月',note:''},
+  {group:'荣誉与扣分',name:'锦旗、感谢信',note:'备注致谢人员名单'},
+  {group:'荣誉与扣分',name:'扣分项',note:'违反科室医院各项规定，点评批评'}
+];
+var GROUPS = ['值班排班','备班','急诊与门诊','记录书写','床日数','产程管理','剖宫产','手术','抢救','教学与活动','荣誉与扣分','其他'];
+function seedCats(){
+  return SEED_CATS.map(function(x){
+    return {id:uid(), name:x.name, note:x.note||'', group:x.group||'其他',
+      allowNegative:!!NEGATIVE_SET[x.name], textLabel:TEXT_LABEL_MAP[x.name]||'', remark:''};
+  });
+}
+
+/* ---------- 存储 ---------- */
+var KEY_PROFILE='wl_profile', KEY_CATS='wl_categories', KEY_RECORDS='wl_records';
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function load(k,def){ try{ var v=localStorage.getItem(k); return v?JSON.parse(v):def; }catch(e){ return def; } }
+function save(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
+function getProfile(){ return load(KEY_PROFILE,{name:'',unit:''}); }
+function setProfile(p){ save(KEY_PROFILE,p); refreshWho(); }
+function getCats(){
+  var c=load(KEY_CATS,null);
+  if(c===null){ c=seedCats(); save(KEY_CATS,c); }
+  // 迁移：补齐字段
+  c.forEach(function(x){
+    if(x.allowNegative===undefined) x.allowNegative=!!NEGATIVE_SET[x.name];
+    if(x.textLabel===undefined) x.textLabel=TEXT_LABEL_MAP[x.name]||'';
+    if(x.remark===undefined) x.remark='';
+    if(!x.group) x.group='其他';
+  });
+  return c;
+}
+function setCats(c){ save(KEY_CATS,c); }
+function getRecords(){ return load(KEY_RECORDS,[]); }
+function setRecords(r){ save(KEY_RECORDS,r); }
+
+/* ---------- 记录读写 ---------- */
+function valueFor(catId,date){
+  var v=0; getRecords().forEach(function(r){ if(r.catId===catId&&r.date===date) v+=r.qty; }); return v;
+}
+function textFor(catId,date){
+  var t=''; getRecords().forEach(function(r){ if(r.catId===catId&&r.date===date && (r.text||'').trim()){ t=t?t+'；'+r.text:r.text; } }); return t;
+}
+function setEntry(catId,date,qty,text){
+  qty=Math.round(qty*100)/100;
+  var t=(text==null?'':(''+text));
+  var recs=getRecords();
+  if(qty===0 && !t.trim()){
+    setRecords(recs.filter(function(r){ return !(r.catId===catId&&r.date===date); }));
+    return;
+  }
+  var e=recs.find(function(r){ return r.catId===catId&&r.date===date; });
+  if(e){ e.qty=qty; e.text=t; }
+  else recs.push({id:uid(),catId:catId,date:date,qty:qty,text:t});
+  setRecords(recs);
+}
+function addCat(name,group,note,neg,textLabel){
+  var c=getCats();
+  c.push({id:uid(),name:name,group:group||'其他',note:note||'',allowNegative:!!neg,textLabel:textLabel||'',remark:''});
+  setCats(c);
+}
+function delCat(id){
+  setCats(getCats().filter(function(c){return c.id!==id;}));
+  setRecords(getRecords().filter(function(r){return r.catId!==id;}));
+}
+function restoreCats(){ setCats(seedCats()); }
+
+/* ---------- 汇总 ---------- */
+function computeSummary(dateStr){
+  var recs=getRecords();
+  var today=0; recs.forEach(function(r){ if(r.date===dateStr) today+=r.qty; });
+  var p=dateStr.split('-'); var y=p[0],m=p[1]; var month=0;
+  recs.forEach(function(r){ var q=r.date.split('-'); if(q[0]===y&&q[1]===m) month+=r.qty; });
+  return {today:Math.round(today*100)/100, month:Math.round(month*100)/100};
+}
+function monthData(year,month){
+  var days=new Date(year,month,0).getDate();
+  var cats=getCats();
+  var grid={}, texts={}, dayTexts={};
+  cats.forEach(function(c){ grid[c.id]={days:{},total:0,text:'',dayTexts:{}}; });
+  getRecords().forEach(function(r){
+    var p=r.date.split('-'); if(+p[0]!==year||+p[1]!==month) return;
+    var d=+p[2]; var g=grid[r.catId]; if(!g) return;
+    g.days[d]=(g.days[d]||0)+r.qty; g.total+=r.qty;
+    var t=(r.text||'').trim();
+    if(t){ if(!g.text) g.text=t; else if(g.text.indexOf(t)<0) g.text+='；'+t; g.dayTexts[d]=t; }
+  });
+  cats.forEach(function(c){
+    var g=grid[c.id];
+    g.total=Math.round(g.total*100)/100;
+    Object.keys(g.days).forEach(function(k){ g.days[k]=Math.round(g.days[k]*100)/100; });
+    texts[c.id]=g.text; dayTexts[c.id]=g.dayTexts;
+  });
+  return {year:year,month:month,days:days,cats:cats,grid:grid,texts:texts,dayTexts:dayTexts};
+}
+
+/* ---------- 工具 ---------- */
+function $(id){ return document.getElementById(id); }
+function pad(n){ return n<10?'0'+n:''+n; }
+function todayStr(){ var d=new Date(); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+function fmt(n){ n=Math.round(n*100)/100; return (''+n); }
+function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+function toast(msg){
+  var t=$('toast'); t.textContent=msg; t.classList.add('show');
+  setTimeout(function(){ t.classList.remove('show'); },1600);
+}
+function download(filename, data, mime){
+  var blob, url, a;
+  if(data instanceof ArrayBuffer || data instanceof Uint8Array){
+    blob=new Blob([data],{type:mime||'application/octet-stream'});
+  } else {
+    blob=new Blob([data],{type:mime||'application/octet-stream'});
+  }
+  url=URL.createObjectURL(blob);
+  a=document.createElement('a'); a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); },100);
+}
+
+/* =========================================================================
+ *  真 .xlsx 生成器（与小程序一致：等线字体/列宽/边框/扣分项8条规则/备注块）
+ *  纯 JS：UTF-8 + CRC32 + ZIP-STORE，无需任何依赖
+ * ========================================================================= */
+function strToUtf8(s){ var out=[]; for(var i=0;i<s.length;i++){ var c=s.charCodeAt(i);
+  if(c<0x80) out.push(c);
+  else if(c<0x800) out.push(0xC0|(c>>6),0x80|(c&0x3F));
+  else if(c>=0xD800&&c<=0xDBFF){ var c2=s.charCodeAt(++i); var cp=0x10000+((c-0xD800)<<10)+(c2-0xDC00);
+    out.push(0xF0|(cp>>18),0x80|((cp>>12)&0x3F),0x80|((cp>>6)&0x3F),0x80|(cp&0x3F)); }
+  else out.push(0xE0|(c>>12),0x80|((c>>6)&0x3F),0x80|(c&0x3F)); } return out; }
+var CRC_TABLE=(function(){ var t=new Uint32Array(256);
+  for(var n=0;n<256;n++){ var c=n; for(var k=0;k<8;k++) c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); t[n]=c>>>0; } return t; })();
+function crc32(bytes){ var c=0xFFFFFFFF; for(var i=0;i<bytes.length;i++) c=(CRC_TABLE[(c^bytes[i])&0xFF]^(c>>>8))>>>0; return (c^0xFFFFFFFF)>>>0; }
+function push16(a,v){ a.push(v&0xFF,(v>>8)&0xFF); }
+function push32(a,v){ a.push(v&0xFF,(v>>8)&0xFF,(v>>16)&0xFF,(v>>24)&0xFF); }
+function buildZip(files){
+  var locals=[], centrals=[], cdOffset=0;
+  files.forEach(function(f){
+    var nameBytes=strToUtf8(f.name), dataBytes=strToUtf8(f.data), crc=crc32(dataBytes), lh=[];
+    push32(lh,0x04034b50); push16(lh,20); push16(lh,0); push16(lh,0); push16(lh,0); push16(lh,0);
+    push32(lh,crc); push32(lh,dataBytes.length); push32(lh,dataBytes.length);
+    push16(lh,nameBytes.length); push16(lh,0);
+    nameBytes.forEach(function(b){ lh.push(b); }); dataBytes.forEach(function(b){ lh.push(b); });
+    var localOffset=cdOffset; cdOffset+=lh.length; locals.push(lh);
+    var ch=[]; push32(ch,0x02014b50); push16(ch,20); push16(ch,20); push16(ch,0); push16(ch,0); push16(ch,0); push16(ch,0);
+    push32(ch,crc); push32(ch,dataBytes.length); push32(ch,dataBytes.length);
+    push16(ch,nameBytes.length); push16(ch,0); push16(ch,0); push16(ch,0); push16(ch,0);
+    push32(ch,0); push32(ch,localOffset); nameBytes.forEach(function(b){ ch.push(b); }); centrals.push(ch);
+  });
+  var out=[], i;
+  locals.forEach(function(l){ l.forEach(function(b){ out.push(b); }); });
+  var cdStart=out.length;
+  centrals.forEach(function(c){ c.forEach(function(b){ out.push(b); }); });
+  var cdSize=out.length-cdStart;
+  push32(out,0x06054b50); push16(out,0); push16(out,0);
+  push16(out,files.length); push16(out,files.length);
+  push32(out,cdSize); push32(out,cdStart); push16(out,0);
+  return new Uint8Array(out).buffer;
+}
+function colLetter(n){ var s=''; n--; while(n>=0){ s=String.fromCharCode(65+(n%26))+s; n=Math.floor(n/26)-1; } return s; }
+function xesc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;'); }
+function numStr(v){ var n=Math.round(v*100)/100; if(n===0) n=0; return String(n); }
+
+var NDAYS=31, COL_PROJECT=1, COL_INT=33, COL_NOTE=34, LAST_COL=34;
+var PROJECTS=[
+  '一线值班','二线值班','急诊班','一线备班（未来院）','二线备班（未来院）','三线备班（未来院）',
+  '各类备班来院','急诊人次','首次病程记录','疑难讨论','MDT讨论','抢救记录',
+  '床日数（普通）','床日数（病重/危）','床日数（ICU）',
+  '产程管理（平产）','产程管理（难产）',
+  '剖宫产（常规）术者','剖宫产（常规）一助','剖宫产（常规）二助',
+  '剖宫产（复杂）术者','剖宫产（复杂）一助','剖宫产（复杂）二助',
+  '三、四级手术（术者）','三、四级手术（一助）','三、四级手术（二助）',
+  'MDT手术（术者）','MDT手术（一助）','MDT手术（二助）',
+  '小手术','外倒转','宫颈环扎',
+  '小抢救（主持）','小抢救（参与）','中抢救（主持）','中抢救（参与）',
+  '非值班备班应急到岗','科室宣传/篇','医院活动（孕妇学校讲课、义诊等）','科室业务学习讲课/次',
+  '参与应急演练/次（主持）','参与应急演练/次（参与）',
+  '危重孕产妇、新生儿死亡评审（准备PPT）','危重孕产妇、新生儿死亡评审（参会并汇报PPT）','新员工带教/月'
+];
+var BEIZHU=[
+  '请每月10日前交上月工作量表（科室成员都需要填，不含常门诊）',
+  '出院日期跨月，床日数工作量计入次月。如跨月时床位医生变更，前者算至月末，后者自1日起算。',
+  '床日数（普通）=出院日期-入院日期-床日数（病危/重）。如10号出院，2号入院，病重1天，10-2-1=7天。',
+  '床日数（病危/重）=停病重日-告病重日。如3号停病重，1号告病重，算2天。',
+  '床日数：二线、三线无需填写，根据组内一线床日数积分折算',
+  '小手术：人工破膜，水囊，清宫术，利凡诺，普贝生，产时超声，子宫肌电，二期伤口换药',
+  '剖宫产：常规、复杂根据手术室收费区分。如常规剖宫产+妇科手术（子宫肌瘤、卵巢囊肿、绝育等）按复杂计算。',
+  '三、四级手术：前置胎盘剖宫产，腹膜外剖宫产，子宫动脉结扎术等。如常规剖宫产+肌瘤剥除+子宫动脉结扎，按手术级别高者计分，只计一台。',
+  'MDT手术：需要其他科室参与协助完成手术',
+  '小抢救、中抢救分级见2026年04月14日科室文件'
+];
+var KOU=[
+  '1.违反科室医院各项规定，点评批评',
+  '2.违反科室诊疗常规，严重医疗差错',
+  '3.产生医疗纠纷，涉及经济赔偿，有效投诉，不良时间漏报引起医患纠纷',
+  '4.有效投诉，不良事件漏报引起医患纠纷',
+  '4.终末病历：乙级病历，丙级病历，不合格病历（除乙级丙级）。病历延迟归档（目前病案室：5个工作日）',
+  '5.运行病历：未在规定时限内完成。有明显缺陷。',
+  '6.生育并发症漏报、危急值无处置及记录，院感漏报延迟处理，艾梅乙漏报，畸形引产漏报',
+  '各项扣款由科室绩效考核小组讨论决定，扣除部分预留至科室奖金，不与医院扣款重复'
+];
+function cStr(ref,s,val){ return '<c r="'+ref+'" s="'+s+'" t="inlineStr"><is><t xml:space="preserve">'+xesc(val)+'</t></is></c>'; }
+function cNum(ref,s,val){ return '<c r="'+ref+'" s="'+s+'"><v>'+numStr(val)+'</v></c>'; }
+function cEmpty(ref,s){ return '<c r="'+ref+'" s="'+s+'"/>'; }
+function xref(col,row){ return colLetter(col)+row; }
+var S={ title:1, hdrName:2, hdrDate:3, hdrInt:4, hdrNote:5, name:6, day:7, int:8, note:9, noteA:10, noteMerged:11 };
+
+function buildXlsx(md, name){
+  var year=md.year, month=md.month;
+  var title=year+'年'+pad(month)+'月个人工作量统计--'+(name||'');
+  var catByName={}; (md.cats||[]).forEach(function(c){ if(c&&c.name) catByName[c.name]=c; });
+  function dayVal(cat,d){ if(!cat) return 0; var g=md.grid[cat.id]; return (g&&g.days[d])?g.days[d]:0; }
+  function catTotal(cat){ if(!cat) return 0; var g=md.grid[cat.id]; return g?g.total:0; }
+  function catText(cat){
+    if(!cat) return '';
+    var t=(md.texts&&md.texts[cat.id])||'';
+    if(t&&String(t).trim()) return t;
+    return cat.note||'';
+  }
+  var rows=[], merges=[], r=0;
+  function pushRow(cells,ht){ r++; rows.push('<row r="'+r+'" ht="'+ht+'" customHeight="1">'+cells.join('')+'</row>'); }
+
+  merges.push('A1:AG1');
+  pushRow([cStr('A1',S.title,title)],50);
+
+  var cells=[cStr('A2',S.hdrName,'项目')];
+  for(var d=1;d<=NDAYS;d++) cells.push(cStr(xref(d+1,2),S.hdrDate,String(d)));
+  cells.push(cStr(xref(COL_INT,2),S.hdrInt,'积分'));
+  cells.push(cStr(xref(COL_NOTE,2),S.hdrNote,'说明'));
+  pushRow(cells,22.5);
+
+  PROJECTS.forEach(function(label){
+    var cat=catByName[label];
+    var cs=[cStr(xref(COL_PROJECT,r+1),S.name,label)];
+    for(var d=1;d<=NDAYS;d++){ var v=dayVal(cat,d); var cr=xref(d+1,r+1); if(v&&v!==0) cs.push(cNum(cr,S.day,v)); else cs.push(cEmpty(cr,S.day)); }
+    cs.push(cNum(xref(COL_INT,r+1),S.int,catTotal(cat)));
+    cs.push(cStr(xref(COL_NOTE,r+1),S.note,catText(cat)));
+    pushRow(cs,22.5);
+  });
+
+  var projSet=new Set(PROJECTS);
+  (md.cats||[]).forEach(function(c){
+    if(!c||!c.name) return;
+    if(projSet.has(c.name)) return;
+    if(c.name==='锦旗、感谢信'||c.name==='扣分项') return;
+    var cs=[cStr(xref(COL_PROJECT,r+1),S.name,c.name)];
+    for(var d=1;d<=NDAYS;d++){ var v=dayVal(c,d); var cr=xref(d+1,r+1); if(v&&v!==0) cs.push(cNum(cr,S.day,v)); else cs.push(cEmpty(cr,S.day)); }
+    cs.push(cNum(xref(COL_INT,r+1),S.int,catTotal(c)));
+    cs.push(cStr(xref(COL_NOTE,r+1),S.note,catText(c)));
+    pushRow(cs,22.5);
+  });
+
+  function sectionRow(label, noteText){
+    var cs=[cStr(xref(COL_PROJECT,r+1),S.name,label)];
+    for(var c=2;c<=33;c++) cs.push(cEmpty(xref(c,r+1),S.day));
+    if(noteText) cs.push(cStr(xref(COL_NOTE,r+1),S.note,noteText));
+    merges.push('B'+(r+1)+':AG'+(r+1));
+    pushRow(cs,22.5);
+  }
+  sectionRow('科室台账管理','');
+  { var cat=catByName['锦旗、感谢信']; sectionRow('锦旗、感谢信',catText(cat)); }
+  sectionRow('其他（可自行补充备注）','');
+
+  { var cs=[cStr(xref(COL_PROJECT,r+1),S.noteA,'备注：')]; cs.push(cStr(xref(2,r+1),S.noteMerged,BEIZHU[0])); merges.push('B'+(r+1)+':AG'+(r+1)); pushRow(cs,22.5);
+    for(var i=1;i<BEIZHU.length;i++){ cs=[cEmpty(xref(COL_PROJECT,r+1),S.noteA)]; cs.push(cStr(xref(2,r+1),S.noteMerged,BEIZHU[i])); merges.push('B'+(r+1)+':AG'+(r+1)); pushRow(cs,22.5); } }
+
+  { var csk=[cStr(xref(COL_PROJECT,r+1),S.noteA,'扣分项')]; csk.push(cStr(xref(2,r+1),S.noteMerged,KOU[0])); merges.push('B'+(r+1)+':AG'+(r+1)); pushRow(csk,22.5);
+    for(var j=1;j<KOU.length;j++){ csk=[cEmpty(xref(COL_PROJECT,r+1),S.noteA)]; csk.push(cStr(xref(2,r+1),S.noteMerged,KOU[j])); merges.push('B'+(r+1)+':AG'+(r+1)); pushRow(csk,22.5); } }
+
+  var lastRow=r;
+  var cols='<cols><col min="1" max="1" width="19.6" customWidth="1"/><col min="2" max="33" width="3.2" customWidth="1"/><col min="34" max="34" width="21.9" customWidth="1"/></cols>';
+  var sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'+
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"/></sheetViews><dimension ref="A1:'+colLetter(LAST_COL)+lastRow+'"/>'+cols+'<sheetData>'+rows.join('')+'</sheetData><mergeCells count="'+merges.length+'">'+merges.map(function(m){return '<mergeCell ref="'+m+'"/>';}).join('')+'</mergeCells></worksheet>';
+
+  var styles=stylesXml();
+  var CT='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'+
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>';
+  var RELS='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'+
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
+  var WB='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'+
+    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="个人工作量统计" sheetId="1" r:id="rId1"/></sheets></workbook>';
+  var WBRELS='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'+
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
+
+  return buildZip([
+    {name:'[Content_Types].xml',data:CT},
+    {name:'_rels/.rels',data:RELS},
+    {name:'xl/workbook.xml',data:WB},
+    {name:'xl/_rels/workbook.xml.rels',data:WBRELS},
+    {name:'xl/styles.xml',data:styles},
+    {name:'xl/worksheets/sheet1.xml',data:sheet}
+  ]);
+}
+function stylesXml(){
+  var fonts='<fonts count="3">\n<font><sz val="28"/><name val="等线"/></font>\n<font><sz val="12"/><name val="等线"/></font>\n<font><sz val="11"/><name val="等线"/></font>\n</fonts>';
+  var fills='<fills count="2">\n<fill><patternFill patternType="none"/></fill>\n<fill><patternFill patternType="gray125"/></fill>\n</fills>';
+  var borders='<borders count="3">\n<border><left/><right/><top/><bottom/><diagonal/></border>\n'+
+    '<border><left style="thin"><color rgb="FF000000"/></left><right style="thin"><color rgb="FF000000"/></right><top style="thin"><color rgb="FF000000"/></top><bottom style="thin"><color rgb="FF000000"/></bottom><diagonal/></border>\n'+
+    '<border><left style="thin"><color rgb="FF000000"/></left><right/><top/><bottom style="thin"><color rgb="FF000000"/></bottom><diagonal/></border>\n</borders>';
+  var xfs='<cellXfs count="12">\n'+
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>\n'+
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="2" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>\n'+
+    '<xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="bottom"/></xf>\n'+
+    '<xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>\n'+
+    '<xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>\n'+
+    '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="bottom"/></xf>\n'+
+    '<xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="bottom"/></xf>\n'+
+    '<xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>\n'+
+    '<xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>\n'+
+    '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="bottom"/></xf>\n'+
+    '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="bottom"/></xf>\n'+
+    '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="bottom"/></xf>\n</cellXfs>';
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'+
+    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+fonts+fills+borders+'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'+xfs+'<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+}
+
+/* =========================================================================
+ *  打卡页
+ * ========================================================================= */
+var recDate=$('recDate');
+var textCache={}; // catId|date -> 文字
+function curKey(id){ return id+'|'+(recDate.value||todayStr()); }
+function renderRecord(){
+  var date=recDate.value||todayStr();
+  var sm=computeSummary(date);
+  $('smToday').textContent=fmt(sm.today);
+  $('smMonth').textContent=fmt(sm.month);
+  var q=($('recSearch').value||'').trim();
+  var cats=getCats();
+  var html='', lastGroup='';
+  cats.forEach(function(c){
+    if(q && c.name.indexOf(q)<0 && (c.note||'').indexOf(q)<0) return;
+    if(c.group!==lastGroup){ html+='<div class="group-title">'+esc(c.group)+'</div>'; lastGroup=c.group; }
+    var v=valueFor(c.id,date);
+    var key=c.id+'|'+date;
+    var t=textFor(c.id,date); textCache[key]=t;
+    var isNeg=c.allowNegative;
+    var rowCls=isNeg?'cat deduct':'cat';
+    var ccCls=isNeg?'cc deduct':'cc';
+    html+='<div class="'+rowCls+'">'+
+      '<div class="ci"><div class="cn">'+esc(c.name)+'</div>'+
+      (c.note?'<div class="cnote">'+esc(c.note)+'</div>':'')+'</div>'+
+      '<div class="'+ccCls+'">'+
+        '<button data-act="dec" data-id="'+c.id+'">−</button>'+
+        '<input class="val" type="number" step="1" '+(isNeg?'':'')+' value="'+v+'" data-id="'+c.id+'" data-act="set">'+
+        '<button data-act="inc" data-id="'+c.id+'">＋</button>'+
+      '</div></div>';
+    if(c.textLabel){
+      html+='<div style="margin:-2px 0 8px 0;"><input class="ctext" type="text" placeholder="'+esc(c.textLabel)+'" value="'+esc(t)+'" data-id="'+c.id+'" data-act="text"></div>';
+    }
+  });
+  if(!html) html='<div class="empty">没有匹配的项目</div>';
+  $('recList').innerHTML=html;
+}
+$('recList').addEventListener('click',function(e){
+  var b=e.target.closest('button'); if(!b) return;
+  var id=b.getAttribute('data-id'); var act=b.getAttribute('data-act');
+  var date=recDate.value||todayStr();
+  var v=valueFor(id,date);
+  if(act==='inc') setEntry(id,date,Math.round((v+1)*100)/100, textCache[id+'|'+date]||'');
+  else if(act==='dec') setEntry(id,date,Math.round((v-1)*100)/100, textCache[id+'|'+date]||'');
+  renderRecord();
+});
+$('recList').addEventListener('change',function(e){
+  if(e.target&&e.target.classList.contains('val')){
+    var id=e.target.getAttribute('data-id'); var date=recDate.value||todayStr();
+    var num=parseFloat(e.target.value); if(isNaN(num)) num=0;
+    setEntry(id,date,num, textCache[id+'|'+date]||'');
+    renderRecord();
+  }
+});
+$('recList').addEventListener('input',function(e){
+  if(e.target&&e.target.classList.contains('ctext')){
+    var id=e.target.getAttribute('data-id'); var date=recDate.value||todayStr();
+    textCache[id+'|'+date]=e.target.value;
+    // 仅在已存在数值或文字非空时落库，避免凭空建空记录
+    var v=valueFor(id,date);
+    if(v!==0 || e.target.value.trim()!=='') setEntry(id,date,v,e.target.value);
+  }
+});
+recDate.addEventListener('change',renderRecord);
+$('recSearch').addEventListener('input',renderRecord);
+
+/* =========================================================================
+ *  月报页
+ * ========================================================================= */
+var curYear=new Date().getFullYear(), curMonth=new Date().getMonth()+1;
+function renderMonth(){
+  $('monthLabel').textContent=curYear+'年'+pad(curMonth)+'月';
+  var mm=pad(curMonth);
+  $('exportBtn').textContent='📤 导出 '+curYear+'年'+mm+'月 工作量表格（.xlsx）';
+  var md=monthData(curYear,curMonth);
+  var list=md.cats.map(function(c){
+    return {name:c.name, total:md.grid[c.id].total, det:md.grid[c.id].days, txt:md.texts[c.id]||''};
+  }).filter(function(x){ return x.total!==0 || x.txt; })
+    .sort(function(a,b){ return Math.abs(b.total)-Math.abs(a.total); });
+  var html='';
+  if(!list.length) html='<div class="empty">本月还没有记录</div>';
+  list.forEach(function(x){
+    var det=''; var days=Object.keys(x.det);
+    days.forEach(function(d){ if(x.det[d]) det+='<span>'+d+'日：'+fmt(x.det[d])+'</span>'; });
+    html+='<div class="mrow"><div class="mh"><div class="mn">'+esc(x.name)+'</div><div class="mt">'+fmt(x.total)+'</div></div>'+
+      (det?'<div class="mdet">'+det+'</div>':'')+
+      (x.txt?'<div class="mtxt">说明：'+esc(x.txt)+'</div>':'')+'</div>';
+  });
+  $('monthList').innerHTML=html;
+  $('monthList').querySelectorAll('.mrow').forEach(function(el){
+    el.addEventListener('click',function(){ el.classList.toggle('open'); });
+  });
+}
+$('prevM').addEventListener('click',function(){ curMonth--; if(curMonth<1){curMonth=12;curYear--;} renderMonth(); });
+$('nextM').addEventListener('click',function(){ curMonth++; if(curMonth>12){curMonth=1;curYear++;} renderMonth(); });
+$('exportBtn').addEventListener('click',function(){
+  var md=monthData(curYear,curMonth);
+  var name=getProfile().name||'';
+  var anyData=md.cats.some(function(c){ return md.grid[c.id].total!==0; });
+  if(!anyData){ toast('本月暂无数据'); return; }
+  var buf=buildXlsx(md,name);
+  var mm=pad(curMonth);
+  var safeName=name.trim()?name.trim():'本人';
+  download(curYear+'年'+mm+'月个人工作量统计--'+safeName+'.xlsx', buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  toast('已导出 .xlsx');
+});
+
+/* =========================================================================
+ *  设置页
+ * ========================================================================= */
+function refreshWho(){
+  var p=getProfile();
+  $('setName').value=p.name||'';
+  $('whoSub').innerHTML = p.name ? ('本地保存 · <b>'+esc(p.name)+'</b>') : '本地保存 · 未设置姓名';
+}
+$('setName').addEventListener('change',function(){
+  var p=getProfile(); p.name=$('setName').value.trim(); setProfile(p); toast('已保存');
+});
+var sel=$('newCatGroup');
+GROUPS.forEach(function(g){ var o=document.createElement('option'); o.value=g; o.textContent=g; sel.appendChild(o); });
+function renderCatList(){
+  var cats=getCats(); var html='';
+  cats.forEach(function(c){
+    html+='<div class="ci"><span>'+esc(c.name)+(c.allowNegative?' <span class="cg">可负分</span>':'')+(c.textLabel?' <span class="cg">'+esc(c.textLabel)+'</span>':'')+' <span class="cg">'+esc(c.group)+'</span></span>'+
+          '<button data-id="'+c.id+'">删除</button></div>';
+  });
+  $('catList').innerHTML=html;
+  $('catList').querySelectorAll('.ci button').forEach(function(b){
+    b.addEventListener('click',function(){
+      var id=b.getAttribute('data-id');
+      var nm=b.parentNode.firstChild.textContent.replace(/\s*\[.*?\]/g,'').trim();
+      if(confirm('确认删除「'+nm+'」？该类别及对应记录将移除。')){ delCat(id); renderCatList(); renderRecord(); toast('已删除'); }
+    });
+  });
+}
+$('addCat').addEventListener('click',function(){
+  var nm=$('newCatName').value.trim();
+  if(!nm){ toast('请输入类别名称'); return; }
+  addCat(nm, sel.value, $('newCatNote').value.trim(), $('newCatNeg').checked, $('newCatText').value.trim());
+  $('newCatName').value=''; $('newCatNote').value=''; $('newCatText').value=''; $('newCatNeg').checked=false;
+  renderCatList(); renderRecord(); toast('已添加');
+});
+$('restoreCat').addEventListener('click',function(){
+  if(confirm('恢复为科室原表全部默认类别？当前自定义类别将被覆盖。')){ restoreCats(); renderCatList(); renderRecord(); toast('已恢复默认'); }
+});
+$('expJson').addEventListener('click',function(){
+  var data={profile:getProfile(),cats:getCats(),records:getRecords()};
+  download('工时打卡备份_'+todayStr()+'.json', JSON.stringify(data,null,2), 'application/json');
+  toast('已导出备份');
+});
+$('impJson').addEventListener('click',function(){ $('impFile').click(); });
+$('impFile').addEventListener('change',function(e){
+  var f=e.target.files[0]; if(!f) return;
+  var rd=new FileReader();
+  rd.onload=function(){
+    try{
+      var d=JSON.parse(rd.result);
+      if(d.profile) save(KEY_PROFILE,d.profile);
+      if(d.cats) save(KEY_CATS,d.cats);
+      if(d.records) save(KEY_RECORDS,d.records);
+      refreshWho(); renderCatList(); renderRecord(); renderMonth();
+      toast('导入成功');
+    }catch(err){ toast('文件格式错误'); }
+  };
+  rd.readAsText(f);
+});
+$('clearMonth').addEventListener('click',function(){
+  if(!confirm('确认清空本月全部打卡记录？')) return;
+  var y=curYear, m=pad(curMonth), prefix=y+'-'+m;
+  setRecords(getRecords().filter(function(r){ return !(r.date&&r.date.indexOf(prefix)===0); }));
+  renderRecord(); renderMonth(); toast('已清空本月');
+});
+$('clearAll').addEventListener('click',function(){
+  if(!confirm('确认清空全部打卡记录（类别与姓名保留）？')) return;
+  setRecords([]); renderRecord(); renderMonth(); toast('已清空全部');
+});
+
+/* =========================================================================
+ *  Tab 切换
+ * ========================================================================= */
+document.querySelectorAll('.tabbar .tb').forEach(function(tb){
+  tb.addEventListener('click',function(){
+    var t=tb.getAttribute('data-tab');
+    document.querySelectorAll('.tabbar .tb').forEach(function(x){ x.classList.remove('active'); });
+    tb.classList.add('active');
+    $('tab-record').classList.toggle('hidden',t!=='record');
+    $('tab-month').classList.toggle('hidden',t!=='month');
+    $('tab-settings').classList.toggle('hidden',t!=='settings');
+    if(t==='month') renderMonth();
+  });
+});
+
+/* =========================================================================
+ *  初始化
+ * ========================================================================= */
+recDate.value=todayStr();
+getCats();
+refreshWho();
+renderCatList();
+renderRecord();
+})();
+</script>
+</body>
+</html>
