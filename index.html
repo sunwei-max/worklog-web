@@ -591,13 +591,13 @@ function buildXlsx(md, name){
   function pushRow(cells,ht){ r++; rows.push('<row r="'+r+'" ht="'+ht+'" customHeight="1">'+cells.join('')+'</row>'); }
 
   merges.push('A1:AG1');
-  pushRow([cStr('A1',S.title,title)],50);
+  pushRow([cStr('A1',S.title,title)],40);
 
   var cells=[cStr('A2',S.hdrName,'项目')];
   for(var d=1;d<=NDAYS;d++) cells.push(cStr(xref(d+1,2),S.hdrDate,String(d)));
   cells.push(cStr(xref(COL_INT,2),S.hdrInt,'积分'));
   cells.push(cStr(xref(COL_NOTE,2),S.hdrNote,'说明'));
-  pushRow(cells,22.5);
+  pushRow(cells,24);
 
   PROJECTS.forEach(function(label){
     var cat=catByName[label];
@@ -605,7 +605,7 @@ function buildXlsx(md, name){
     for(var d=1;d<=NDAYS;d++){ var v=dayVal(cat,d); var cr=xref(d+1,r+1); if(v&&v!==0) cs.push(cNum(cr,S.day,v)); else cs.push(cEmpty(cr,S.day)); }
     cs.push(cNum(xref(COL_INT,r+1),S.int,catTotal(cat)));
     cs.push(cStr(xref(COL_NOTE,r+1),S.note,catText(cat)));
-    pushRow(cs,22.5);
+    pushRow(cs,24);
   });
 
   var projSet=new Set(PROJECTS);
@@ -617,7 +617,7 @@ function buildXlsx(md, name){
     for(var d=1;d<=NDAYS;d++){ var v=dayVal(c,d); var cr=xref(d+1,r+1); if(v&&v!==0) cs.push(cNum(cr,S.day,v)); else cs.push(cEmpty(cr,S.day)); }
     cs.push(cNum(xref(COL_INT,r+1),S.int,catTotal(c)));
     cs.push(cStr(xref(COL_NOTE,r+1),S.note,catText(c)));
-    pushRow(cs,22.5);
+    pushRow(cs,24);
   });
 
   function sectionRow(label, noteText){
@@ -625,22 +625,22 @@ function buildXlsx(md, name){
     for(var c=2;c<=33;c++) cs.push(cEmpty(xref(c,r+1),S.day));
     if(noteText) cs.push(cStr(xref(COL_NOTE,r+1),S.note,noteText));
     merges.push('B'+(r+1)+':AG'+(r+1));
-    pushRow(cs,22.5);
+    pushRow(cs,24);
   }
   sectionRow('科室台账管理','');
   { var cat=catByName['锦旗、感谢信']; sectionRow('锦旗、感谢信',catText(cat)); }
   sectionRow('其他（可自行补充备注）','');
 
-  { var cs=[cStr(xref(COL_PROJECT,r+1),S.noteA,'备注：')]; cs.push(cStr(xref(2,r+1),S.noteMerged,BEIZHU[0])); merges.push('B'+(r+1)+':AG'+(r+1)); pushRow(cs,22.5);
-    for(var i=1;i<BEIZHU.length;i++){ cs=[cEmpty(xref(COL_PROJECT,r+1),S.noteA)]; cs.push(cStr(xref(2,r+1),S.noteMerged,BEIZHU[i])); merges.push('B'+(r+1)+':AG'+(r+1)); pushRow(cs,22.5); } }
+  { var cs=[cStr(xref(COL_PROJECT,r+1),S.noteA,'备注：')]; cs.push(cStr(xref(2,r+1),S.noteMerged,BEIZHU[0])); merges.push('B'+(r+1)+':AG'+(r+1)); pushRow(cs,24);
+    for(var i=1;i<BEIZHU.length;i++){ cs=[cEmpty(xref(COL_PROJECT,r+1),S.noteA)]; cs.push(cStr(xref(2,r+1),S.noteMerged,BEIZHU[i])); merges.push('B'+(r+1)+':AG'+(r+1)); pushRow(cs,24); } }
 
-  { var csk=[cStr(xref(COL_PROJECT,r+1),S.noteA,'扣分项')]; csk.push(cStr(xref(2,r+1),S.noteMerged,KOU[0])); merges.push('B'+(r+1)+':AG'+(r+1)); pushRow(csk,22.5);
-    for(var j=1;j<KOU.length;j++){ csk=[cEmpty(xref(COL_PROJECT,r+1),S.noteA)]; csk.push(cStr(xref(2,r+1),S.noteMerged,KOU[j])); merges.push('B'+(r+1)+':AG'+(r+1)); pushRow(csk,22.5); } }
+  { var csk=[cStr(xref(COL_PROJECT,r+1),S.noteA,'扣分项')]; csk.push(cStr(xref(2,r+1),S.noteMerged,KOU[0])); merges.push('B'+(r+1)+':AG'+(r+1)); pushRow(csk,24);
+    for(var j=1;j<KOU.length;j++){ csk=[cEmpty(xref(COL_PROJECT,r+1),S.noteA)]; csk.push(cStr(xref(2,r+1),S.noteMerged,KOU[j])); merges.push('B'+(r+1)+':AG'+(r+1)); pushRow(csk,24); } }
 
   var lastRow=r;
-  var cols='<cols><col min="1" max="1" width="19.6" customWidth="1"/><col min="2" max="33" width="3.2" customWidth="1"/><col min="34" max="34" width="21.9" customWidth="1"/></cols>';
+  var cols='<cols><col min="1" max="1" width="19.6" customWidth="1"/><col min="2" max="33" width="4.5" customWidth="1"/><col min="34" max="34" width="21.9" customWidth="1"/></cols>';
   var sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'+
-    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:'+colLetter(LAST_COL)+lastRow+'"/><sheetViews><sheetView workbookViewId="0"/></sheetViews>'+cols+'<sheetData>'+rows.join('')+'</sheetData><mergeCells count="'+merges.length+'">'+merges.map(function(m){return '<mergeCell ref="'+m+'"/>';}).join('')+'</mergeCells></worksheet>';
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:'+colLetter(LAST_COL)+lastRow+'"/><sheetViews><sheetView workbookViewId="0"/></sheetViews>'+cols+'<sheetData>'+rows.join('')+'</sheetData><mergeCells count="'+merges.length+'">'+merges.map(function(m){return '<mergeCell ref="'+m+'"/>';}).join('')+'</mergeCells><pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>';
 
   var styles=stylesXml();
   var CT='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'+
@@ -648,7 +648,7 @@ function buildXlsx(md, name){
   var RELS='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'+
     '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
   var WB='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'+
-    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="个人工作量统计" sheetId="1" r:id="rId1"/></sheets></workbook>';
+    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="个人工作量统计" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="_xlnm.Print_Titles" localSheetId="0">\'个人工作量统计\'!$1:$2</definedName></definedNames></workbook>';
   var WBRELS='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'+
     '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
 
@@ -662,7 +662,7 @@ function buildXlsx(md, name){
   ]);
 }
 function stylesXml(){
-  var fonts='<fonts count="3">\n<font><sz val="28"/><name val="等线"/></font>\n<font><sz val="12"/><name val="等线"/></font>\n<font><sz val="11"/><name val="等线"/></font>\n</fonts>';
+  var fonts='<fonts count="3">\n<font><sz val="20"/><name val="等线"/></font>\n<font><sz val="12"/><name val="等线"/></font>\n<font><sz val="12"/><name val="等线"/></font>\n</fonts>';
   var fills='<fills count="2">\n<fill><patternFill patternType="none"/></fill>\n<fill><patternFill patternType="gray125"/></fill>\n</fills>';
   var borders='<borders count="3">\n<border><left/><right/><top/><bottom/><diagonal/></border>\n'+
     '<border><left style="thin"><color rgb="FF000000"/></left><right style="thin"><color rgb="FF000000"/></right><top style="thin"><color rgb="FF000000"/></top><bottom style="thin"><color rgb="FF000000"/></bottom><diagonal/></border>\n'+
