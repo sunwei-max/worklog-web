@@ -179,6 +179,18 @@
       <input type="text" id="setName" placeholder="如：王娇娇" />
     </div>
     <div class="card">
+      <h3>云同步（跨手机 / 电脑自动一致）</h3>
+      <div class="about" style="margin-bottom:8px;">在各设备输入<b>同一个「同步码」</b>即可自动同步。数据在你浏览器端用同步码加密后才上传，云端只存密文，隐私可控。云同步需通过在线地址（扫码打开的网页）使用；本机双击文件模式仅本地保存。</div>
+      <label>同步码（自定义，多设备保持一致）</label>
+      <input type="text" id="syncCode" placeholder="例如：wangjiaojiao2026" />
+      <button class="btn primary" style="width:100%; margin-top:10px;" id="saveSync">保存同步码并同步</button>
+      <div class="row2" style="margin-top:10px;">
+        <button class="btn" id="pullSync">从云端拉取</button>
+        <button class="btn red" id="clearSync">关闭同步</button>
+      </div>
+      <div class="about" id="syncStatus" style="margin-top:10px; color:var(--blue);">未开启</div>
+    </div>
+    <div class="card">
       <h3>类别管理</h3>
       <label>新增类别名称</label>
       <input type="text" id="newCatName" placeholder="类别名称" />
@@ -212,7 +224,7 @@
       </div>
     </div>
     <div class="card about">
-      数据保存在本浏览器（localStorage）。换设备或清缓存会丢失，重要数据请定期「导出备份」。<br>
+      数据默认保存在本浏览器（localStorage）。开启「云同步」后，各设备输入同一同步码即可跨手机 / 电脑自动一致（数据加密后上云，隐私可控）。<br>
       导出 .xlsx 格式与你提供的「个人工作量统计」原表一致（等线字体 / 列宽 / 边框 / 扣分项规则），可用 WPS / Excel 打开。<br>
       网页版，无需微信、无需服务器，双击文件即可使用；把本文件发给同事，各自在本人电脑填报，数据互不干扰。
     </div>
@@ -305,13 +317,78 @@ function seedCats(){
   });
 }
 
+/* ---------- 云同步（Supabase 存储 + 浏览器端 AES 加密） ---------- */
+var SUPABASE_URL='__SUPABASE_URL__';          // 部署前由我替换为你的 Project URL
+var SUPABASE_ANON='__SUPABASE_ANON__';        // 部署前由我替换为你的 anon public key
+var SYNC_ON = !!(SUPABASE_URL && SUPABASE_URL.indexOf('__SUPABASE')!==0);
+var HAVE_CRYPTO = !!(window.crypto && window.crypto.subtle);
+var KEY_SYNC_CODE='wl_sync_code';
+var _syncTimer=null, _syncKeyCache={};
+function getSyncCode(){ return load(KEY_SYNC_CODE,''); }
+function setSyncCode(c){ save(KEY_SYNC_CODE,c); }
+function syncHeaders(){ return {'Content-Type':'application/json','apikey':SUPABASE_ANON,'Authorization':'Bearer '+SUPABASE_ANON}; }
+function b64enc(buf){ return btoa(String.fromCharCode.apply(null, Array.prototype.slice.call(new Uint8Array(buf)))); }
+function b64dec(s){ var b=atob(s); var u=new Uint8Array(b.length); for(var i=0;i<b.length;i++) u[i]=b.charCodeAt(i); return u; }
+async function deriveKey(code){
+  if(_syncKeyCache[code]) return _syncKeyCache[code];
+  var enc=new TextEncoder();
+  var base=await crypto.subtle.importKey('raw',enc.encode('worklog-sync-v1'),{name:'PBKDF2'},false,['deriveKey']);
+  var salt=enc.encode('wl-const-salt-v1');
+  var key=await crypto.subtle.deriveKey({name:'PBKDF2',salt:salt,iterations:100000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+  _syncKeyCache[code]=key; return key;
+}
+async function syncId(code){ var enc=new TextEncoder(); var h=await crypto.subtle.digest('SHA-256',enc.encode('id:v1:'+code)); return b64enc(h); }
+async function encryptPayload(code,obj){
+  var key=await deriveKey(code);
+  var iv=crypto.getRandomValues(new Uint8Array(12));
+  var pt=new TextEncoder().encode(JSON.stringify(obj));
+  var ct=await crypto.subtle.encrypt({name:'AES-GCM',iv:iv},key,pt);
+  return {iv:b64enc(iv), data:b64enc(ct)};
+}
+async function decryptPayload(code,p){
+  var key=await deriveKey(code);
+  var iv=b64dec(p.iv), ct=b64dec(p.data);
+  var pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:iv},key,ct);
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+function setSyncStatus(s){ var el=document.getElementById('syncStatus'); if(el) el.textContent=s; }
+async function pushToCloud(){
+  if(!SYNC_ON||!HAVE_CRYPTO) return;
+  var code=getSyncCode(); if(!code) return;
+  try{
+    var payload=await encryptPayload(code,{profile:getProfile(),cats:getCats(),records:getRecords(),t:Date.now()});
+    var sid=await syncId(code);
+    var body=JSON.stringify({sync_id:sid,cipher:JSON.stringify(payload),updated_at:new Date().toISOString()});
+    var r=await fetch(SUPABASE_URL+'/rest/v1/worklog_sync',{method:'POST',headers:Object.assign({'Prefer':'resolution=merge-duplicates'},syncHeaders()),body:body});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    setSyncStatus('已同步 '+new Date().toLocaleString());
+  }catch(e){ setSyncStatus('同步失败：'+((e&&e.message)?e.message:e)); }
+}
+function scheduleSync(){ if(!SYNC_ON||!HAVE_CRYPTO||!getSyncCode()) return; clearTimeout(_syncTimer); _syncTimer=setTimeout(pushToCloud,1500); }
+async function pullFromCloud(){
+  if(!SYNC_ON||!HAVE_CRYPTO) return;
+  var code=getSyncCode(); if(!code) return;
+  try{
+    var sid=await syncId(code);
+    var r=await fetch(SUPABASE_URL+'/rest/v1/worklog_sync?sync_id=eq.'+encodeURIComponent(sid),{headers:syncHeaders()});
+    if(!r.ok) return;
+    var rows=await r.json(); if(!rows||!rows.length) return;
+    var p=JSON.parse(rows[0].cipher); var obj=await decryptPayload(code,p);
+    if(obj.profile) save(KEY_PROFILE,obj.profile);
+    if(obj.cats) save(KEY_CATS,obj.cats);
+    if(obj.records) save(KEY_RECORDS,obj.records);
+    refreshWho(); renderCatList(); renderRecord(); renderMonth();
+    setSyncStatus('已从云端同步 '+new Date().toLocaleString());
+  }catch(e){ setSyncStatus('拉取失败：'+((e&&e.message)?e.message:e)); }
+}
+
 /* ---------- 存储 ---------- */
 var KEY_PROFILE='wl_profile', KEY_CATS='wl_categories', KEY_RECORDS='wl_records';
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function load(k,def){ try{ var v=localStorage.getItem(k); return v?JSON.parse(v):def; }catch(e){ return def; } }
 function save(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
 function getProfile(){ return load(KEY_PROFILE,{name:'',unit:''}); }
-function setProfile(p){ save(KEY_PROFILE,p); refreshWho(); }
+function setProfile(p){ save(KEY_PROFILE,p); refreshWho(); scheduleSync(); }
 function getCats(){
   var c=load(KEY_CATS,null);
   if(c===null){ c=seedCats(); save(KEY_CATS,c); }
@@ -324,9 +401,9 @@ function getCats(){
   });
   return c;
 }
-function setCats(c){ save(KEY_CATS,c); }
+function setCats(c){ save(KEY_CATS,c); scheduleSync(); }
 function getRecords(){ return load(KEY_RECORDS,[]); }
-function setRecords(r){ save(KEY_RECORDS,r); }
+function setRecords(r){ save(KEY_RECORDS,r); scheduleSync(); }
 
 /* ---------- 记录读写 ---------- */
 function valueFor(catId,date){
@@ -563,7 +640,7 @@ function buildXlsx(md, name){
   var lastRow=r;
   var cols='<cols><col min="1" max="1" width="19.6" customWidth="1"/><col min="2" max="33" width="3.2" customWidth="1"/><col min="34" max="34" width="21.9" customWidth="1"/></cols>';
   var sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'+
-    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"/></sheetViews><dimension ref="A1:'+colLetter(LAST_COL)+lastRow+'"/>'+cols+'<sheetData>'+rows.join('')+'</sheetData><mergeCells count="'+merges.length+'">'+merges.map(function(m){return '<mergeCell ref="'+m+'"/>';}).join('')+'</mergeCells></worksheet>';
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:'+colLetter(LAST_COL)+lastRow+'"/><sheetViews><sheetView workbookViewId="0"/></sheetViews>'+cols+'<sheetData>'+rows.join('')+'</sheetData><mergeCells count="'+merges.length+'">'+merges.map(function(m){return '<mergeCell ref="'+m+'"/>';}).join('')+'</mergeCells></worksheet>';
 
   var styles=stylesXml();
   var CT='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'+
@@ -784,6 +861,24 @@ $('clearAll').addEventListener('click',function(){
   if(!confirm('确认清空全部打卡记录（类别与姓名保留）？')) return;
   setRecords([]); renderRecord(); renderMonth(); toast('已清空全部');
 });
+$('saveSync').addEventListener('click',function(){
+  var c=$('syncCode').value.trim();
+  if(!c){ toast('请输入同步码'); return; }
+  setSyncCode(c); toast('已保存同步码，正在同步…'); pullFromCloud();
+});
+$('pullSync').addEventListener('click',function(){
+  if(!getSyncCode()){ toast('请先保存同步码'); return; }
+  if(!HAVE_CRYPTO){ toast('请通过在线地址使用云同步'); return; }
+  pullFromCloud();
+});
+$('clearSync').addEventListener('click',function(){
+  setSyncCode(''); setSyncStatus('未开启'); toast('已关闭同步');
+});
+(function(){
+  var c=getSyncCode();
+  if(c){ $('syncCode').value=c;
+    setSyncStatus((SYNC_ON&&HAVE_CRYPTO)?'已开启，自动同步中':'需通过在线地址使用云同步'); }
+})();
 
 /* =========================================================================
  *  Tab 切换
@@ -808,6 +903,7 @@ getCats();
 refreshWho();
 renderCatList();
 renderRecord();
+if(SYNC_ON && HAVE_CRYPTO && getSyncCode()){ pullFromCloud(); }
 })();
 </script>
 </body>
