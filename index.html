@@ -217,6 +217,26 @@
       <input type="file" id="impFile" accept="application/json" class="hidden" />
     </div>
     <div class="card">
+      <h3>GitHub 自动备份（私有仓库）</h3>
+      <div class="about" style="margin-bottom:8px;">把每月工作量表格（.xlsx）和完整数据（.json）自动提交到你的 GitHub <b>私有仓库</b>作为云端备份。需自备一个 Personal Access Token（勾选 <code>repo</code> 权限；建议用 fine-grained token 仅授权该备份仓库）。Token 仅保存在本浏览器，不上传他人。</div>
+      <label>GitHub Token（PAT）</label>
+      <input type="password" id="ghToken" placeholder="ghp_..." />
+      <label>仓库（owner/repo）</label>
+      <input type="text" id="ghRepo" placeholder="sunwei-max/worklog-backup" />
+      <div class="row2" style="margin-top:8px;">
+        <div style="flex:1;"><label>分支</label><input type="text" id="ghBranch" placeholder="main" value="main" /></div>
+        <div style="flex:1;"><label>文件路径</label><input type="text" id="ghPath" placeholder="worklog-backup.xlsx" value="worklog-backup.xlsx" /></div>
+      </div>
+      <label style="margin-top:8px; display:flex; align-items:center; gap:6px; color:var(--txt); font-size:13px;">
+        <input type="checkbox" id="ghAuto" style="width:auto;" /> 数据变动后自动备份（约 20 秒后）
+      </label>
+      <button class="btn primary" style="width:100%; margin-top:10px;" id="ghSave">保存备份设置</button>
+      <div class="row2" style="margin-top:10px;">
+        <button class="btn" id="ghBackupNow">立即备份</button>
+      </div>
+      <div class="about" id="ghStatus" style="margin-top:10px; color:var(--blue);">未配置</div>
+    </div>
+    <div class="card">
       <h3>清空记录</h3>
       <div class="row2">
         <button class="btn red" id="clearMonth">清空本月</button>
@@ -388,7 +408,7 @@ function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(
 function load(k,def){ try{ var v=localStorage.getItem(k); return v?JSON.parse(v):def; }catch(e){ return def; } }
 function save(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
 function getProfile(){ return load(KEY_PROFILE,{name:'',unit:''}); }
-function setProfile(p){ save(KEY_PROFILE,p); refreshWho(); scheduleSync(); }
+function setProfile(p){ save(KEY_PROFILE,p); refreshWho(); scheduleSync(); scheduleGHBackup(); }
 function getCats(){
   var c=load(KEY_CATS,null);
   if(c===null){ c=seedCats(); save(KEY_CATS,c); }
@@ -401,9 +421,9 @@ function getCats(){
   });
   return c;
 }
-function setCats(c){ save(KEY_CATS,c); scheduleSync(); }
+function setCats(c){ save(KEY_CATS,c); scheduleSync(); scheduleGHBackup(); }
 function getRecords(){ return load(KEY_RECORDS,[]); }
-function setRecords(r){ save(KEY_RECORDS,r); scheduleSync(); }
+function setRecords(r){ save(KEY_RECORDS,r); scheduleSync(); scheduleGHBackup(); }
 
 /* ---------- 记录读写 ---------- */
 function valueFor(catId,date){
@@ -790,6 +810,7 @@ $('exportBtn').addEventListener('click',function(){
   var safeName=name.trim()?name.trim():'本人';
   download(curYear+'年'+mm+'月个人工作量统计--'+safeName+'.xlsx', buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   toast('已导出 .xlsx');
+  if(getGHCfg().token && getGHCfg().repo){ backupToGitHub(); }
 });
 
 /* =========================================================================
@@ -894,6 +915,83 @@ document.querySelectorAll('.tabbar .tb').forEach(function(tb){
     if(t==='month') renderMonth();
   });
 });
+
+/* =========================================================================
+ *  GitHub 自动备份（私有仓库，纯前端，无需后端）
+ *  - 通过 GitHub Contents API 提交 .xlsx（表格）与 .json（完整数据）
+ *  - GitHub API 支持浏览器跨域（Access-Control-Allow-Origin: *）
+ * ========================================================================= */
+var KEY_GH='worklog_gh_cfg';
+function getGHCfg(){ try{ return JSON.parse(localStorage.getItem(KEY_GH))||{}; }catch(e){ return {}; } }
+function setGHCfg(c){ try{ localStorage.setItem(KEY_GH,JSON.stringify(c)); }catch(e){} }
+function ghStatus(s,ok){ var el=$('ghStatus'); if(!el) return; el.textContent=s; if(ok!==undefined) el.style.color=ok?'#1a7f37':'#c0392b'; }
+function utf8ToB64(str){ return b64enc(new Uint8Array(strToUtf8(str))); }
+function ghEncodePath(p){ return p.split('/').map(encodeURIComponent).join('/'); }
+async function ghPutFile(repo,branch,path,contentB64,msg){
+  var repoEnc=repo.split('/').map(encodeURIComponent).join('/');
+  var api='https://api.github.com/repos/'+repoEnc+'/contents/'+ghEncodePath(path);
+  var head={'Authorization':'Bearer '+getGHCfg().token,'Accept':'application/vnd.github+json','Content-Type':'application/json'};
+  var sha=null;
+  try{ var g=await fetch(api+'?ref='+encodeURIComponent(branch),{headers:head}); if(g.status===200){ sha=(await g.json()).sha; } }catch(e){}
+  for(var i=0;i<2;i++){
+    var body={message:msg,content:contentB64,branch:branch}; if(sha) body.sha=sha;
+    var r=await fetch(api,{method:'PUT',headers:head,body:JSON.stringify(body)});
+    if(r.status===200||r.status===201){ return true; }
+    if(r.status===409){ try{ var g2=await fetch(api+'?ref='+encodeURIComponent(branch),{headers:head}); if(g2.status===200) sha=(await g2.json()).sha; }catch(e){} continue; }
+    var err=await r.json().catch(function(){return{};}); throw new Error(err.message||('HTTP '+r.status));
+  }
+  throw new Error('更新冲突，请重试');
+}
+async function backupToGitHub(){
+  var cfg=getGHCfg();
+  if(!cfg.token||!cfg.repo){ ghStatus('请先填写 Token 与仓库',false); toast('请先配置 GitHub 备份'); return false; }
+  var repo=cfg.repo.trim(), branch=(cfg.branch||'main').trim(), path=(cfg.path||'worklog-backup.xlsx').trim();
+  ghStatus('备份中…');
+  try{
+    var md=monthData(curYear,curMonth);
+    var buf=buildXlsx(md,getProfile().name||'');
+    await ghPutFile(repo,branch,path,b64enc(buf),'backup xlsx '+new Date().toISOString());
+    var payload={profile:getProfile(),cats:getCats(),records:getRecords(),exportedAt:new Date().toISOString()};
+    var jpath=path.replace(/\.xlsx$/i,'')+'-data.json';
+    await ghPutFile(repo,branch,jpath,utf8ToB64(JSON.stringify(payload,null,2)),'backup json '+new Date().toISOString());
+    ghStatus('已备份 ✅ '+new Date().toLocaleString(),true);
+    toast('已备份到 GitHub');
+    return true;
+  }catch(e){
+    ghStatus('备份失败：'+((e&&e.message)||e),false);
+    toast('GitHub 备份失败');
+    return false;
+  }
+}
+var _ghTimer=null;
+function scheduleGHBackup(){
+  var cfg=getGHCfg();
+  if(!cfg.auto||!cfg.token||!cfg.repo) return;
+  clearTimeout(_ghTimer);
+  _ghTimer=setTimeout(function(){ backupToGitHub(); }, 20000);
+}
+// GitHub 备份设置载入与绑定
+(function(){
+  var c=getGHCfg();
+  if(c.token) $('ghToken').value=c.token;
+  if(c.repo) $('ghRepo').value=c.repo;
+  if(c.branch) $('ghBranch').value=c.branch;
+  if(c.path) $('ghPath').value=c.path;
+  $('ghAuto').checked=!!c.auto;
+  if(c.token&&c.repo) ghStatus('已配置（'+(c.auto?'自动':'手动')+'）');
+  $('ghSave').addEventListener('click',function(){
+    var cc=getGHCfg();
+    cc.token=$('ghToken').value.trim();
+    cc.repo=$('ghRepo').value.trim();
+    cc.branch=$('ghBranch').value.trim()||'main';
+    cc.path=$('ghPath').value.trim()||'worklog-backup.xlsx';
+    cc.auto=$('ghAuto').checked;
+    setGHCfg(cc);
+    ghStatus('已保存（'+(cc.auto?'自动':'手动')+'）',true);
+    toast('已保存 GitHub 备份设置');
+  });
+  $('ghBackupNow').addEventListener('click',function(){ backupToGitHub(); });
+})();
 
 /* =========================================================================
  *  初始化
