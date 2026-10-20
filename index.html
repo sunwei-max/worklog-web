@@ -179,6 +179,27 @@
       <input type="text" id="setName" placeholder="如：王娇娇" />
     </div>
     <div class="card">
+      <h3>跨设备备份 / 恢复（GitHub 私有仓库）</h3>
+      <div class="about" style="margin-bottom:8px;">把每月工作量表格（.xlsx）和完整数据（.json）自动提交到你的 GitHub <b>私有仓库</b>作为云端备份。需自备一个 Personal Access Token（勾选 <code>repo</code> 权限；建议用 fine-grained token 仅授权该备份仓库）。Token 仅保存在本浏览器，不上传他人。</div>
+      <label>GitHub Token（PAT）</label>
+      <input type="password" id="ghToken" placeholder="ghp_..." />
+      <label>仓库（owner/repo）</label>
+      <input type="text" id="ghRepo" placeholder="sunwei-max/worklog-backup" />
+      <div class="row2" style="margin-top:8px;">
+        <div style="flex:1;"><label>分支</label><input type="text" id="ghBranch" placeholder="main" value="main" /></div>
+        <div style="flex:1;"><label>文件路径</label><input type="text" id="ghPath" placeholder="worklog-backup.xlsx" value="worklog-backup.xlsx" /></div>
+      </div>
+      <label style="margin-top:8px; display:flex; align-items:center; gap:6px; color:var(--txt); font-size:13px;">
+        <input type="checkbox" id="ghAuto" style="width:auto;" /> 数据变动后自动备份（约 20 秒后）
+      </label>
+      <button class="btn primary" style="width:100%; margin-top:10px;" id="ghSave">保存备份设置</button>
+      <div class="row2" style="margin-top:10px;">
+        <button class="btn" id="ghBackupNow">立即备份</button>
+        <button class="btn" id="ghRestore">从仓库恢复</button>
+      </div>
+      <div class="about" id="ghStatus" style="margin-top:10px; color:var(--blue);">未配置</div>
+    </div>
+    <div class="card" style="display:none;">
       <h3>云同步（跨手机 / 电脑自动一致）</h3>
       <div class="about" style="margin-bottom:8px;">在各设备输入<b>同一个「同步码」</b>即可自动同步。数据在你浏览器端用同步码加密后才上传，云端只存密文，隐私可控。云同步需通过在线地址（扫码打开的网页）使用；本机双击文件模式仅本地保存。</div>
       <label>同步码（自定义，多设备保持一致）</label>
@@ -215,27 +236,6 @@
         <button class="btn" id="impJson">导入备份</button>
       </div>
       <input type="file" id="impFile" accept="application/json" class="hidden" />
-    </div>
-    <div class="card">
-      <h3>GitHub 自动备份（私有仓库）</h3>
-      <div class="about" style="margin-bottom:8px;">把每月工作量表格（.xlsx）和完整数据（.json）自动提交到你的 GitHub <b>私有仓库</b>作为云端备份。需自备一个 Personal Access Token（勾选 <code>repo</code> 权限；建议用 fine-grained token 仅授权该备份仓库）。Token 仅保存在本浏览器，不上传他人。</div>
-      <label>GitHub Token（PAT）</label>
-      <input type="password" id="ghToken" placeholder="ghp_..." />
-      <label>仓库（owner/repo）</label>
-      <input type="text" id="ghRepo" placeholder="sunwei-max/worklog-backup" />
-      <div class="row2" style="margin-top:8px;">
-        <div style="flex:1;"><label>分支</label><input type="text" id="ghBranch" placeholder="main" value="main" /></div>
-        <div style="flex:1;"><label>文件路径</label><input type="text" id="ghPath" placeholder="worklog-backup.xlsx" value="worklog-backup.xlsx" /></div>
-      </div>
-      <label style="margin-top:8px; display:flex; align-items:center; gap:6px; color:var(--txt); font-size:13px;">
-        <input type="checkbox" id="ghAuto" style="width:auto;" /> 数据变动后自动备份（约 20 秒后）
-      </label>
-      <button class="btn primary" style="width:100%; margin-top:10px;" id="ghSave">保存备份设置</button>
-      <div class="row2" style="margin-top:10px;">
-        <button class="btn" id="ghBackupNow">立即备份</button>
-        <button class="btn" id="ghRestore">从仓库恢复</button>
-      </div>
-      <div class="about" id="ghStatus" style="margin-top:10px; color:var(--blue);">未配置</div>
     </div>
     <div class="card">
       <h3>清空记录</h3>
