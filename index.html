@@ -233,6 +233,7 @@
       <button class="btn primary" style="width:100%; margin-top:10px;" id="ghSave">保存备份设置</button>
       <div class="row2" style="margin-top:10px;">
         <button class="btn" id="ghBackupNow">立即备份</button>
+        <button class="btn" id="ghRestore">从仓库恢复</button>
       </div>
       <div class="about" id="ghStatus" style="margin-top:10px; color:var(--blue);">未配置</div>
     </div>
@@ -963,6 +964,42 @@ async function backupToGitHub(){
     return false;
   }
 }
+function b64ToUtf8(b64){
+  var bin=atob((b64||'').replace(/\s+/g,''));
+  var bytes=new Uint8Array(bin.length);
+  for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+  return new TextDecoder('utf-8').decode(bytes);
+}
+async function ghGetFile(repo,branch,path){
+  var repoEnc=repo.split('/').map(encodeURIComponent).join('/');
+  var api='https://api.github.com/repos/'+repoEnc+'/contents/'+ghEncodePath(path);
+  var head={'Authorization':'Bearer '+getGHCfg().token,'Accept':'application/vnd.github+json'};
+  var r=await fetch(api+'?ref='+encodeURIComponent(branch),{headers:head});
+  if(r.status===404) throw new Error('仓库中还没有备份文件，请先在另一端备份');
+  if(!r.ok){ var e=await r.json().catch(function(){return {};}); throw new Error(e.message||('HTTP '+r.status)); }
+  var d=await r.json();
+  return d.content;
+}
+async function restoreFromGitHub(){
+  var cfg=getGHCfg();
+  if(!cfg.token||!cfg.repo){ ghStatus('请先填写 Token 与仓库',false); toast('请先配置 GitHub 备份'); return; }
+  var repo=cfg.repo.trim(), branch=(cfg.branch||'main').trim(), path=(cfg.path||'worklog-backup.xlsx').trim();
+  ghStatus('恢复中…');
+  try{
+    var jpath=path.replace(/\.xlsx$/i,'')+'-data.json';
+    var b64=await ghGetFile(repo,branch,jpath);
+    var payload=JSON.parse(b64ToUtf8(b64));
+    if(payload.profile) setProfile(payload.profile);
+    if(payload.cats) setCats(payload.cats);
+    if(payload.records) setRecords(payload.records);
+    refreshWho(); renderCatList(); renderRecord();
+    ghStatus('已从仓库恢复 ✅ '+new Date().toLocaleString(),true);
+    toast('已从 GitHub 恢复数据');
+  }catch(e){
+    ghStatus('恢复失败：'+((e&&e.message)||e),false);
+    toast('GitHub 恢复失败');
+  }
+}
 var _ghTimer=null;
 function scheduleGHBackup(){
   var cfg=getGHCfg();
@@ -991,6 +1028,7 @@ function scheduleGHBackup(){
     toast('已保存 GitHub 备份设置');
   });
   $('ghBackupNow').addEventListener('click',function(){ backupToGitHub(); });
+  $('ghRestore').addEventListener('click',function(){ restoreFromGitHub(); });
 })();
 
 /* =========================================================================
