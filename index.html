@@ -1366,7 +1366,8 @@ async function doQuickSync(silent,isBackup){
   if($('btnSync')) $('btnSync').addEventListener('click',function(){ doQuickSync(); });
   // 注意：导出按钮只在上面绑一次（带“导出前同步”），这里不要重复绑定，否则会下载两份
   var c=quickCfg(), t=localTs();
-  if(c.token && t) tip('上次同步 '+fmtTime(t)+' · 点<b>同步</b>即可', (Date.now()-t>86400000?'#c0392b':'#8a8f99'));
+  if(c.token && t) tip('上次同步 '+fmtTime(t)+' · 版本 v3 · 点<b>同步</b>即可', (Date.now()-t>86400000?'#c0392b':'#8a8f99'));
+  else tip('版本 v3 · 点<b>同步</b>从云端取最新','#8a8f99');
 })();
 
 /* =========================================================================
