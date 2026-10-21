@@ -470,7 +470,23 @@ function delCat(id){
   setCats(getCats().filter(function(c){return c.id!==id;}));
   setRecords(getRecords().filter(function(r){return r.catId!==id;}));
 }
-function restoreCats(){ setCats(seedCats()); }
+// 恢复默认全部类别：重置为出厂 47 类，并“以本机为准”覆盖云端，让其他设备同步时也生效。
+// 关键点：
+//  1. 复用同名旧类别的 id —— 否则旧工时记录 catId 指向的旧类别被移除会变成孤儿记录、丢掉工时；
+//  2. bump catsRev（类别版本戳）—— mergeData 以 catsRev 较大的一方类别为准，从而把云端旧自定义类别清掉；
+//  3. 多出来的自定义类别（不在默认名单）被移除，其工时记录孤儿化但原样保留在数据里（云端可回溯）。
+function restoreCats(){
+  var old=getCats()||[];
+  var oldByName={};
+  old.forEach(function(c){ if(c&&c.name) oldByName[normName(c.name)]=c; });
+  var def=seedCats();
+  def.forEach(function(c){
+    var m=oldByName[normName(c.name)];
+    if(m&&m.id) c.id=m.id;          // 复用已有同名类别 id，保证旧工时记录不丢
+  });
+  var p=getProfile(); p.catsRev=Date.now(); save(KEY_PROFILE,p);
+  setCats(def);
+}
 
 /* ---------- 汇总 ---------- */
 function computeSummary(dateStr){
@@ -876,7 +892,10 @@ $('addCat').addEventListener('click',function(){
   renderCatList(); renderRecord(); toast('已添加');
 });
 $('restoreCat').addEventListener('click',function(){
-  if(confirm('恢复为科室原表全部默认类别？当前自定义类别将被覆盖。')){ restoreCats(); renderCatList(); renderRecord(); toast('已恢复默认'); }
+  if(confirm('恢复为科室原表全部默认类别？当前自定义类别将被覆盖，并从云端同步清除。')){
+    restoreCats(); renderCatList(); renderRecord();
+    doQuickSync(true).catch(function(){});   // 立即把“以默认类别为准”覆盖到云端，其他设备下次同步即生效
+    toast('已恢复默认并同步'); }
 });
 $('expJson').addEventListener('click',function(){
   var data={profile:getProfile(),cats:getCats(),records:getRecords()};
@@ -1351,22 +1370,32 @@ function mergeData(local, cloud){
   var records=Object.keys(map).map(function(k){ return map[k]; });
 
   var lcat=local.cats||[], ccat=cloud.cats||[];
-  var cmap={};
-  function putCat(c){
-    if(!c||!c.id) return;
-    var ex=cmap[c.id];
-    if(!ex){ cmap[c.id]=c; return; }
-    var ra=rankOf(c), rb=rankOf(ex);
-    if(ra!==rb){ if(ra>rb) cmap[c.id]=c; return; }
-    if(JSON.stringify(c)>JSON.stringify(ex)) cmap[c.id]=c;   // 确定性兜底，避免两端各留一份
+  // 类别版本戳：恢复默认/类别重构时 bump，合并以较大的一方为准，避免“恢复后又被云端旧类别覆盖回来”
+  var lrev=(local.profile&&local.profile.catsRev)||0;
+  var crev=(cloud.profile&&cloud.profile.catsRev)||0;
+  var cats;
+  if(crev>lrev){
+    cats=dedupeByName(ccat, records).cats;            // 云端类别较新（如刚恢复默认），以云端为准
+  } else if(lrev>crev){
+    cats=dedupeByName(lcat, records).cats;            // 本机类别较新，以本机为准（覆盖云端旧类别）
+  } else {
+    var cmap={};
+    function putCat(c){
+      if(!c||!c.id) return;
+      var ex=cmap[c.id];
+      if(!ex){ cmap[c.id]=c; return; }
+      var ra=rankOf(c), rb=rankOf(ex);
+      if(ra!==rb){ if(ra>rb) cmap[c.id]=c; return; }
+      if(JSON.stringify(c)>JSON.stringify(ex)) cmap[c.id]=c;   // 确定性兜底，避免两端各留一份
+    }
+    lcat.forEach(putCat); ccat.forEach(putCat);
+    cats=Object.keys(cmap).map(function(k){ return cmap[k]; });
   }
-  lcat.forEach(putCat);
-  ccat.forEach(putCat);
-  var cats=Object.keys(cmap).map(function(k){ return cmap[k]; });
 
   var cp=cloud.profile||{}, lp=local.profile||{};
   var profile=Object.assign({}, cp, lp);            // 本机覆盖云端
   if(!profile.unit) profile.unit=cp.unit||'';        // unit 本机为空时回退云端
+  profile.catsRev=Math.max(lrev,crev);              // 类别版本戳随合并推进，保证两端最终一致
   var nd=dedupeByName(cats, records);                // 同名重复类别合并，防止统计翻倍/导出丢行
   return {profile:profile, cats:nd.cats, records:nd.records};
 }
