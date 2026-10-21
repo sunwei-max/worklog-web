@@ -421,7 +421,7 @@ function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(
 function load(k,def){ try{ var v=localStorage.getItem(k); return v?JSON.parse(v):def; }catch(e){ return def; } }
 function save(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
 function getProfile(){ return load(KEY_PROFILE,{name:'',unit:''}); }
-function setProfile(p){ save(KEY_PROFILE,p); touchLocal(); refreshWho(); scheduleSync(); scheduleGHBackup(); }
+function setProfile(p){ save(KEY_PROFILE,p); touchLocal(); refreshWho(); scheduleAutoSync(); }
 function getCats(){
   var c=load(KEY_CATS,null);
   if(c===null){ c=seedCats(); save(KEY_CATS,c); }
@@ -434,9 +434,9 @@ function getCats(){
   });
   return c;
 }
-function setCats(c){ save(KEY_CATS,c); touchLocal(); scheduleSync(); scheduleGHBackup(); }
+function setCats(c){ save(KEY_CATS,c); touchLocal(); scheduleAutoSync(); }
 function getRecords(){ return load(KEY_RECORDS,[]); }
-function setRecords(r){ save(KEY_RECORDS,r); touchLocal(); scheduleSync(); scheduleGHBackup(); }
+function setRecords(r){ save(KEY_RECORDS,r); touchLocal(); scheduleAutoSync(); }
 
 /* ---------- 记录读写 ---------- */
 function valueFor(catId,date){
@@ -823,7 +823,7 @@ $('exportBtn').addEventListener('click',function(){
   var safeName=name.trim()?name.trim():'本人';
   download(curYear+'年'+mm+'月个人工作量统计--'+safeName+'.xlsx', buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   toast('已导出 .xlsx');
-  if(quickCfg().token && getGHCfg().repo){ backupToGitHub(); }
+  scheduleAutoSync();
 });
 
 /* =========================================================================
@@ -1023,12 +1023,14 @@ async function restoreFromGitHub(){
     toast('GitHub 恢复失败');
   }
 }
-var _ghTimer=null;
-function scheduleGHBackup(){
-  var cfg=getGHCfg();
-  if(!cfg.auto||!cfg.token||!cfg.repo) return;
-  clearTimeout(_ghTimer);
-  _ghTimer=setTimeout(function(){ backupToGitHub(); }, 20000);
+// 录入改动后自动合并同步（防抖 2.5 秒）；_applyingRemote 期间不触发，避免写回时死循环
+var _autoTimer=null;
+function scheduleAutoSync(){
+  if(_applyingRemote) return;
+  if(!((getProfile().name||'').trim())) return;   // 没填名字就不自动同步，等手动
+  if(!quickCfg().token) return;
+  clearTimeout(_autoTimer);
+  _autoTimer=setTimeout(function(){ doQuickSync(true); }, 2500);
 }
 // 高级设置卡片已移除：token / 仓库 / 分支 / 路径均已内置，无需手动配置
 
@@ -1154,11 +1156,15 @@ function mergeData(local, cloud){
   return {profile:profile, cats:cats, records:records};
 }
 
-async function doQuickSync(){
-  if(!needName()) return;
+async function doQuickSync(silent){
+  var nm=((getProfile().name||'').trim());
+  if(!nm){
+    if(silent) return;                       // 自动模式：没填名字就不弹框，等手动
+    nm=needName();
+    if(!nm) return;
+  }
   if(!needToken()) return;
   var cfg=quickCfg();
-  var nm=getProfile().name||'';
   var jpath=userJsonPath(nm);
   tip('正在同步…','#2f7de1');
   var cloud=null, getErr=null;
@@ -1168,7 +1174,7 @@ async function doQuickSync(){
   }catch(e){ getErr=e; }
   if(getErr && !/还没有备份文件/.test((getErr&&getErr.message)||'')){
     tip('⚠️ 连不上云端（'+(((getErr&&getErr.message)||getErr)+'').slice(0,40)+'），稍后再点一次','#c0392b');
-    toast('网络不通，稍后再试');
+    if(!silent) toast('网络不通，稍后再试');
     return;
   }
   try{
@@ -1179,7 +1185,7 @@ async function doQuickSync(){
       await ghPutFile(cfg.repo,cfg.branch,jpath,utf8ToB64(JSON.stringify(p0)),'sync '+new Date().toISOString());
       localStorage.setItem(KEY_TS,String(p0.savedAt));
       tip('✅ 云端还没有备份，已把本机 '+local.records.length+' 条上传建档','#1a9d5a');
-      toast('同步好了');
+      if(!silent) toast('同步好了');
       (function(){ try{
         var md=monthData(curYear,curMonth);
         var buf=buildXlsx(md,getProfile().name||'');
@@ -1203,7 +1209,7 @@ async function doQuickSync(){
     var p1={profile:getProfile(),cats:getCats(),records:getRecords(),savedAt:savedAt,v:2};
     await ghPutFile(cfg.repo,cfg.branch,jpath,utf8ToB64(JSON.stringify(p1)),'sync '+new Date().toISOString());
     tip('✅ 已合并两端数据（本机 '+before+' · 云端 '+cbefore+' → 汇总 '+merged.records.length+' 条，已双向同步）','#1a9d5a');
-    toast('同步好了');
+    if(!silent) toast('同步好了');
     (function(){ try{
       var md=monthData(curYear,curMonth);
       var buf=buildXlsx(md,getProfile().name||'');
@@ -1211,7 +1217,7 @@ async function doQuickSync(){
     }catch(e){} })();
   }catch(e){
     tip('⚠️ 同步失败：'+((e&&e.message)||e),'#c0392b');
-    toast('同步失败');
+    if(!silent) toast('同步失败');
   }
 }
 
