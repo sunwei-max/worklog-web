@@ -1187,15 +1187,15 @@ function recSig(records){
 }
 
 // 同格两条记录谁胜出 —— 必须是“与设备无关的全序”，否则两端各算一次结果不同，同步就永远不收敛。
-// 优先级：修改时间 mtime 新 > 创建序号 rankOf 大 > 绝对值大 > id 字典序大。
+// 优先级：修改时间 mtime 新 > 绝对值大（历史数据没有 mtime 时的兜底，避免数值缩水）> 创建序号 > id 字典序。
 function betterRec(a,b){
   if(!a) return b; if(!b) return a;
   var ma=a.mtime||0, mb=b.mtime||0;
   if(ma!==mb) return ma>mb?a:b;
-  var ra=rankOf(a), rb=rankOf(b);
-  if(ra!==rb) return ra>rb?a:b;
   var qa=Math.abs(a.qty||0), qb=Math.abs(b.qty||0);
   if(qa!==qb) return qa>qb?a:b;
+  var ra=rankOf(a), rb=rankOf(b);
+  if(ra!==rb) return ra>rb?a:b;
   return (''+(a.id||'')) >= (''+(b.id||'')) ? a : b;
 }
 
