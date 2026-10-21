@@ -50,7 +50,7 @@
   if(!(zoom>=MINZ)) zoom=1.5;
   if(zoom>MAXZ) zoom=MAXZ;
 
-  var MASK_BASE = 42;   /* 100% 时盖住的高度，随倍数等比放大 */
+  var MASK_BASE = 56;   /* 100% 时“阅读器”那行的高度，遮挡随倍数等比放大 */
 
   function apply(){
     var W = window.innerWidth || document.documentElement.clientWidth || 600;
