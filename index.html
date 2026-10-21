@@ -176,10 +176,8 @@
   <!-- 打卡 -->
   <section id="tab-record">
     <div class="quickbar">
-      <button class="qbtn qb-backup" id="btnBackup">备份</button>
-      <button class="qbtn qb-sync" id="btnSync">同步</button>
-      <button class="qbtn qb-export" id="btnExport">导出</button>
-      <div class="qtip" id="syncTip">手机、电脑填同一个名字，点<b>同步</b>就一致</div>
+      <button class="qbtn qb-export" id="btnExport">导出本月表格</button>
+      <div class="qtip" id="syncTip">手机、电脑填同一个名字，数据<b>自动同步</b>到云端</div>
     </div>
     <div class="datebar">
       <label>日期</label>
@@ -817,7 +815,7 @@ function renderMonth(){
 }
 $('prevM').addEventListener('click',function(){ curMonth--; if(curMonth<1){curMonth=12;curYear--;} renderMonth(); });
 $('nextM').addEventListener('click',function(){ curMonth++; if(curMonth>12){curMonth=1;curYear++;} renderMonth(); });
-$('exportBtn').addEventListener('click',async function(){
+async function exportCurrentMonth(){
   tip('正在同步最新数据…','#2f7de1');
   try{ await doQuickSync(true); }catch(e){}   // 导出前先拉取云端最新，避免导出旧数据
   normalizeLocal();                           // 再规整一次：同名重复类别合并，保证表格不丢行
@@ -831,7 +829,9 @@ $('exportBtn').addEventListener('click',async function(){
   var safeName=name.trim()?name.trim():'本人';
   download(curYear+'年'+mm+'月个人工作量统计--'+safeName+'.xlsx', buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   toast('已导出 .xlsx（已同步最新）');
-});
+}
+$('exportBtn').addEventListener('click',exportCurrentMonth);
+$('btnExport').addEventListener('click',exportCurrentMonth);
 
 /* =========================================================================
  *  设置页
@@ -1037,6 +1037,75 @@ async function restoreFromGitHub(){
     toast('GitHub 恢复失败');
   }
 }
+/* 重渲染时尽量保留输入框焦点与光标，避免自动同步/轮询打断正在输入 */
+function withFocusPreserved(fn){
+  var a=document.activeElement;
+  var info=null;
+  if(a && a.getAttribute){
+    info={act:a.getAttribute('data-act'), id:a.getAttribute('data-id'),
+          start:(a.selectionStart!=null?a.selectionStart:null), end:(a.selectionEnd!=null?a.selectionEnd:null)};
+  }
+  fn();
+  if(info && info.id){
+    var el=document.querySelector('[data-act="'+info.act+'"][data-id="'+info.id+'"]');
+    if(el){ el.focus(); try{ if(info.start!=null && el.setSelectionRange) el.setSelectionRange(info.start,info.end); }catch(e){} }
+  }
+}
+function safeRender(){
+  withFocusPreserved(function(){
+    refreshWho();
+    if(typeof renderCatList==='function') renderCatList();
+    if(typeof renderRecord==='function') renderRecord();
+    if(typeof renderMonth==='function') renderMonth();
+  });
+}
+// 类别指纹：用于判断两端类别是否一致（顺序无关）
+function catSig(cats){
+  return (cats||[]).map(function(c){
+    return (c.id||'')+'|'+normName(c.name)+'|'+(c.allowNegative?1:0)+'|'+normName(c.group)+'|'+(c.note||'');
+  }).sort().join(';');
+}
+
+// 每 60 秒自动拉取并合并一次（准实时）：无变化则跳过写回、不打扰用户；失败静默，下次再试
+var _lastPollSig='';
+async function pollSync(){
+  if(_applyingRemote || _switching) return;
+  var nm=((getProfile().name||'').trim());
+  if(!nm || !quickCfg().token) return;
+  var cfg=quickCfg();
+  var jpath=userJsonPath(nm);
+  try{
+    var b64=await ghGetFile(cfg.repo,cfg.branch,jpath);
+    var cloud=b64?JSON.parse(b64ToUtf8(b64)):null;
+    if(!cloud) return;
+    var local={profile:getProfile(),cats:getCats(),records:getRecords()};
+    var lsig=recSig(local.records), csig=recSig(cloud.records);
+    var lcsig=catSig(local.cats), ccsig=catSig(cloud.cats);
+    var lname=(local.profile&&local.profile.name)||'', cname=(cloud.profile&&cloud.profile.name)||'';
+    // 两端记录、类别、名字都一致 → 无需动作，不打扰、不写回
+    if(lsig===csig && lcsig===ccsig && lname===cname){ _lastPollSig=lsig; return; }
+    var merged=mergeData(local,cloud);
+    _applyingRemote=true;
+    if(merged.profile) setProfile(merged.profile);
+    if(merged.cats) setCats(merged.cats);
+    if(merged.records) setRecords(merged.records);
+    _applyingRemote=false;
+    localStorage.setItem(KEY_TS,String(Date.now()));
+    safeRender();
+    if($('setName')) $('setName').value=((getProfile().name)||'');
+    // 本地若有云端没有的新增，或合并结果不同 → 写回云端，保持双端一致
+    if(recSig(getRecords())!==csig || catSig(getCats())!==ccsig){
+      var p1={profile:getProfile(),cats:getCats(),records:getRecords(),savedAt:Date.now(),v:2};
+      await ghPutFile(cfg.repo,cfg.branch,jpath,utf8ToB64(JSON.stringify(p1)),'sync '+new Date().toISOString()).catch(function(){});
+      try{
+        var md=monthData(curYear,curMonth);
+        var buf=buildXlsx(md,getProfile().name||'');
+        await ghPutFile(cfg.repo,cfg.branch,userXlsxPath(nm),b64enc(buf),'xlsx '+new Date().toISOString()).catch(function(){});
+      }catch(e){}
+    }
+  }catch(e){ /* 轮询静默：失败不提示，下次 60 秒后再试 */ }
+}
+
 // 录入改动后自动合并同步（防抖 2.5 秒）；_applyingRemote 期间不触发，避免写回时死循环
 var _autoTimer=null;
 function scheduleAutoSync(){
@@ -1063,7 +1132,7 @@ function switchUser(newName){
       setRecords([]);
       var pp=getProfile(); pp.name=newName; save(KEY_PROFILE,pp);
       _applyingRemote=false;
-      refreshWho(); if(typeof renderCatList==='function') renderCatList(); if(typeof renderRecord==='function') renderRecord();
+      safeRender();
       if($('setName')) $('setName').value=newName;
       var blank={profile:getProfile(),cats:getCats(),records:[],savedAt:Date.now(),v:2};
       ghPutFile(cfg.repo,cfg.branch,userJsonPath(newName),utf8ToB64(JSON.stringify(blank)),'new blank '+new Date().toISOString()).catch(function(){});
@@ -1083,7 +1152,7 @@ function switchUser(newName){
         pp.name=newName; save(KEY_PROFILE,pp);
         _applyingRemote=false;
         localStorage.setItem(KEY_TS,String(cloud.savedAt||Date.now()));
-        refreshWho(); if(typeof renderCatList==='function') renderCatList(); if(typeof renderRecord==='function') renderRecord();
+        safeRender();
         if($('setName')) $('setName').value=newName;
         tip('✅ 已切换到「'+newName+'」('+fmtTime(cloud.savedAt||Date.now())+')','#1a9d5a');
         toast('已切换到 '+newName);
@@ -1167,12 +1236,6 @@ function hasLocalData(){
   return (Array.isArray(r) && r.length>0);
 }
 
-async function doQuickBackup(){
-  // 备份也走“先合并再上传”，避免把另一台设备刚填的数据整体冲掉
-  if(!needName()) return;
-  await doQuickSync(false, true);
-}
-
 // 取记录/类别的"创建时间戳"用于合并时比较新旧（id = Date.now().toString(36)+随机，前 8 位即毫秒时间戳的 36 进制）
 function rankOf(o){ try{ return parseInt((''+(o&&o.id||'')).slice(0,8),36)||0; }catch(e){ return 0; } }
 
@@ -1242,7 +1305,9 @@ function dedupeByName(cats, records){
 
 // 就地规整本机数据（不触发自动同步，避免死循环）
 function normalizeLocal(){
-  var res=dedupeByName(load(KEY_CATS,[]), getRecords());
+  var cats=load(KEY_CATS,null);
+  if(cats===null){ cats=seedCats(); save(KEY_CATS,cats); }   // 首次无数据先建种子类别，绝不能清空
+  var res=dedupeByName(cats, getRecords());
   save(KEY_CATS,res.cats); save(KEY_RECORDS,res.records);
   return res;
 }
@@ -1329,7 +1394,7 @@ async function doQuickSync(silent,isBackup){
     _applyingRemote=false;
     var savedAt=Date.now();
     localStorage.setItem(KEY_TS,String(savedAt));
-    refreshWho(); if(typeof renderCatList==='function') renderCatList(); if(typeof renderRecord==='function') renderRecord();
+    safeRender();
     if($('setName')) $('setName').value=((getProfile().name)||'');
     // 写回云端，并回读校验：若这段时间内别的设备抢先写过，就再合并一次（最多 2 轮），确保最终一致
     for(var round=0; round<2; round++){
@@ -1345,7 +1410,7 @@ async function doQuickSync(silent,isBackup){
       if(m2.cats) setCats(m2.cats);
       if(m2.records) setRecords(m2.records);
       _applyingRemote=false;
-      refreshWho(); if(typeof renderCatList==='function') renderCatList(); if(typeof renderRecord==='function') renderRecord();
+      safeRender();
     }
     var finalN=getRecords().length;
     tip('✅ 已合并两端数据（本机 '+before+' · 云端 '+cbefore+' → 汇总 '+finalN+' 条，已双向同步 '+fmtTime(Date.now())+'）','#1a9d5a');
@@ -1362,12 +1427,9 @@ async function doQuickSync(silent,isBackup){
 }
 
 (function(){
-  if($('btnBackup')) $('btnBackup').addEventListener('click',function(){ doQuickBackup(); });
-  if($('btnSync')) $('btnSync').addEventListener('click',function(){ doQuickSync(); });
-  // 注意：导出按钮只在上面绑一次（带“导出前同步”），这里不要重复绑定，否则会下载两份
   var c=quickCfg(), t=localTs();
-  if(c.token && t) tip('上次同步 '+fmtTime(t)+' · 版本 v3 · 点<b>同步</b>即可', (Date.now()-t>86400000?'#c0392b':'#8a8f99'));
-  else tip('版本 v3 · 点<b>同步</b>从云端取最新','#8a8f99');
+  if(c.token && t) tip('上次同步 '+fmtTime(t)+' · 版本 v4 · 已自动同步', (Date.now()-t>86400000?'#c0392b':'#8a8f99'));
+  else tip('版本 v4 · 数据每 60 秒自动同步','#8a8f99');
 })();
 
 /* =========================================================================
@@ -1385,6 +1447,9 @@ setTimeout(function(){
   if(!((getProfile().name||'').trim())) return;
   try{ doQuickSync(true).catch(function(){}); }catch(e){}
 }, 1200);
+// 每 60 秒自动拉取合并（准实时）；切回页面（手机/电脑从后台回来）立即再同步一次，保证回来即最新
+setInterval(function(){ try{ pollSync().catch(function(){}); }catch(e){} }, 60000);
+document.addEventListener('visibilitychange', function(){ if(!document.hidden){ try{ pollSync().catch(function(){}); }catch(e){} } });
 })();
 </script>
 </body>
