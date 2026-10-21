@@ -3,63 +3,41 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>微信读书 大字版</title>
+<title>微读</title>
 <style>
   html,body{margin:0;padding:0;background:#fff;color:#000;}
   body{overflow:hidden;-webkit-text-size-adjust:100%;
-       font-family:"Helvetica Neue",Helvetica,Arial,"Microsoft YaHei",sans-serif;}
-  /* 工具栏改用 table：老 Kindle 内核 100% 支持，不会因 flex 不支持而错位 */
-  #bar{position:absolute;left:0;top:0;background:#fff;border-collapse:collapse;
-       border-bottom:2px solid #000;width:100%;}
+       font-family:Helvetica,Arial,"Microsoft YaHei",sans-serif;}
+  /* 极简工具栏：table 布局，老内核必支持 */
+  #bar{position:absolute;left:0;top:0;width:100%;border-collapse:collapse;
+       border-bottom:1px solid #000;background:#fff;}
   #bar td{padding:0;vertical-align:middle;white-space:nowrap;}
-  #bar .t{font-size:14px;font-weight:bold;padding:0 4px 0 6px;}
-  #bar button{font-size:15px;line-height:1;padding:9px 8px;margin:2px;border:2px solid #000;
-       background:#fff;color:#000;border-radius:5px;-webkit-appearance:none;
-       appearance:none;font-family:inherit;cursor:pointer;}
-  #bar button.on{background:#000;color:#fff;}
-  #bar .pct{font-size:13px;font-weight:bold;text-align:center;padding:0 3px;}
+  #bar .t{font-size:12px;font-weight:bold;padding:0 5px;}
+  #bar button{font-size:14px;line-height:1;padding:4px 7px;margin:2px;border:1px solid #000;
+       background:#fff;color:#000;border-radius:4px;-webkit-appearance:none;
+       appearance:none;font-family:inherit;}
+  #bar .pct{font-size:12px;padding:0 3px;}
   #bar .gap{width:100%;}
   #stage{position:absolute;left:0;background:#fff;overflow:hidden;}
   #wr{position:absolute;left:0;top:0;border:0;background:#fff;}
-  #tip{position:absolute;left:0;right:0;top:0;background:#f4f4f4;border-bottom:1px solid #000;
-       font-size:14px;line-height:1.6;padding:8px 10px;display:none;z-index:5;}
-  #help{position:absolute;left:0;top:0;width:100%;height:100%;background:#fff;z-index:20;
-       padding:14px;font-size:16px;line-height:1.8;display:none;}
-  #help h3{margin:0 0 8px;font-size:18px;}
-  #help p{margin:0 0 8px;}
-  #help a{color:#000;}
-  #diag{background:#f4f4f4;border:1px solid #999;padding:8px;font-size:12px;
-        line-height:1.6;word-wrap:break-word;margin:6px 0 10px;}
-  #help .x{font-size:15px;padding:9px 16px;border:2px solid #000;background:#fff;
-       border-radius:5px;font-family:inherit;margin-top:4px;}
+  #note{position:absolute;left:0;right:0;top:0;background:#000;color:#fff;
+       font-size:13px;line-height:1.5;padding:6px 8px;display:none;z-index:5;}
 </style>
 </head>
 <body>
 
 <table id="bar" cellspacing="0" cellpadding="0" border="0"><tr>
   <td class="t">微读</td>
-  <td><button id="minus" title="缩小">A−</button></td>
-  <td><button id="plus" title="放大">A＋</button></td>
-  <td class="pct"><span id="pct">150%</span></td>
+  <td><button id="minus">A−</button></td>
+  <td><button id="plus">A＋</button></td>
+  <td class="pct" id="pct">150%</td>
   <td class="gap"></td>
-  <td><button id="reload" title="刷新">刷新</button></td>
-  <td><button id="open" title="直接打开原站">原页</button></td>
-  <td><button id="helpBtn" title="说明与诊断">?</button></td>
+  <td><button id="reload">⟳</button></td>
 </tr></table>
 
 <div id="stage">
-  <div id="tip">正在加载微信读书…</div>
-  <iframe id="wr" src="https://weread.qq.com/" allowfullscreen></iframe>
-</div>
-
-<div id="help">
-  <h3>说明</h3>
-  <p>1. <b>A＋</b> / <b>A−</b> 调整整页放大倍数（100%～300%），字号会一起变大，设置自动记住。</p>
-  <p>2. 微信读书页面里自带「字体」按钮，两者可叠加。</p>
-  <p>3. 若一直空白：先点「原页」在 Kindle 浏览器里直接登录一次 weread.qq.com，再回本页。</p>
-  <p>4. 本页只是放大外壳，不存储、不转发任何账号与阅读数据。</p>
-  <div id="diag">诊断信息加载中…</div>
-  <button class="x" id="helpClose">知道了</button>
+  <div id="note"></div>
+  <iframe id="wr" src="https://weread.qq.com/"></iframe>
 </div>
 
 <script>
@@ -68,116 +46,119 @@
   var stage= document.getElementById('stage');
   var wr   = document.getElementById('wr');
   var pct  = document.getElementById('pct');
-  var tip  = document.getElementById('tip');
-  var help = document.getElementById('help');
-  var diag = document.getElementById('diag');
+  var note = document.getElementById('note');
 
   var zoom = 1.5;
   try{ var s=localStorage.getItem('wr_zoom'); if(s) zoom=parseFloat(s); }catch(e){}
   if(!(zoom>=1&&zoom<=3)) zoom=1.5;
 
-  /* 能力探测：老 Kindle 内核(WebKit 534)没有 transform，但有 zoom。
-     zoom 会真正重排+放大，效果最好，所以优先用 zoom，transform 兜底。 */
-  var canZoom = false, canT = false;
-  try{
-    canZoom = ('zoom' in wr.style) || (typeof wr.style.zoom === 'string');
-    canT = ('transform' in wr.style) || ('webkitTransform' in wr.style) || ('WebkitTransform' in wr.style);
-  }catch(e){}
-
-  var loaded = false, W=0, H=0, BH=0, tries=0;
+  var W=0,H=0,BH=0,sw=0,sh=0;
+  var mode=null;          /* 'transform' | 'zoom' | 'none' */
+  var probed=false, loaded=false;
 
   function measure(){
     W = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth || 600;
     H = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight || 800;
-    if(!W || !H){ W = W||600; H = H||800; }
-    bar.style.width = W + 'px';
+    bar.style.width = W+'px';
     BH = bar.offsetHeight || 0;
-    if(BH < 30) BH = 46;
-    stage.style.top    = BH + 'px';
-    stage.style.width  = W + 'px';
-    stage.style.height = (H - BH) + 'px';
-    return (W>0 && (H-BH)>60);
+    if(BH < 20) BH = 28;
+    stage.style.top = BH+'px';
+    stage.style.width = W+'px';
+    stage.style.height = (H-BH)+'px';
+    sw = stage.clientWidth  || W;
+    sh = stage.clientHeight || (H-BH);
+    return (sw>40 && sh>40);
+  }
+
+  function rectW(){
+    try{ var r = wr.getBoundingClientRect(); if(r && r.width) return r.width; }catch(e){}
+    return wr.offsetWidth || 0;
+  }
+
+  function clearFx(){
+    try{ wr.style.transform=''; wr.style.webkitTransform=''; }catch(e){}
+    try{ wr.style.zoom=''; }catch(e){}
+    wr.style.transformOrigin='0 0';
+    wr.style.webkitTransformOrigin='0 0';
+  }
+
+  /* 关键：不同内核支持的缩放方式不同，实测哪种真的把 iframe 放大了再定下来 */
+  function probe(done){
+    if(!measure()){ setTimeout(function(){ probe(done); }, 200); return; }
+    var z = 1.2;
+    clearFx();
+    wr.style.width  = Math.round(sw/z)+'px';
+    wr.style.height = Math.round(sh/z)+'px';
+    wr.style.webkitTransform = 'scale('+z+')';
+    wr.style.transform       = 'scale('+z+')';
+    setTimeout(function(){
+      if(rectW() > sw*0.95){ mode='transform'; clearFx(); probed=true; done&&done(); return; }
+      clearFx();
+      wr.style.zoom = String(z);
+      setTimeout(function(){
+        if(rectW() > sw*0.95){ mode='zoom'; } else { mode='none'; }
+        clearFx(); probed=true; done&&done();
+      }, 160);
+    }, 160);
   }
 
   function apply(){
-    if(!measure() && tries < 12){ tries++; setTimeout(apply,150); return; }
-    var sw = stage.clientWidth  || (W - 0);
-    var sh = stage.clientHeight || (H - BH);
-    if(!sw || !sh || sw<40 || sh<40){ tries++; if(tries<20){ setTimeout(apply,150); } return; }
+    if(!measure()){ setTimeout(apply, 200); return; }
     var z = zoom;
-    var iw = Math.round(sw / z), ih = Math.round(sh / z);
+    var iw = Math.round(sw/z), ih = Math.round(sh/z);
+    wr.style.width  = iw+'px';
+    wr.style.height = ih+'px';
 
-    wr.style.width  = iw + 'px';
-    wr.style.height = ih + 'px';
-
-    if(canZoom){
-      try{ wr.style.transform=''; wr.style.webkitTransform=''; }catch(e){}
+    if(mode==='transform'){
+      clearFx();
+      wr.style.webkitTransform = 'scale('+z+')';
+      wr.style.transform       = 'scale('+z+')';
+    }else if(mode==='zoom'){
+      clearFx();
       wr.style.zoom = String(z);
-    }else if(canT){
-      try{ wr.style.zoom=''; }catch(e){}
-      wr.style.transformOrigin='0 0';
-      wr.style.webkitTransformOrigin='0 0';
-      wr.style.transform='scale('+z+')';
-      wr.style.webkitTransform='scale('+z+')';
     }
-    pct.innerHTML = Math.round(z*100) + '%';
+    pct.innerHTML = Math.round(z*100)+'%';
     try{ localStorage.setItem('wr_zoom', String(z)); }catch(e){}
-    paintDiag(sw, sh, z);
-  }
-
-  function paintDiag(sw, sh, z){
-    diag.innerHTML =
-      '屏幕宽高：' + W + ' × ' + H + '<br>' +
-      '内容区：' + Math.round(sw) + ' × ' + Math.round(sh) + '<br>' +
-      '工具栏高：' + BH + '<br>' +
-      '缩放方式：' + (canZoom ? 'zoom（推荐，已生效）' : (canT ? 'transform' : '不支持，仅窄宽重排')) + '<br>' +
-      '倍数：' + Math.round(z*100) + '%<br>' +
-      'iframe 加载完成：' + (loaded ? '是' : '否（空白多半是这一步失败）');
   }
 
   function setZ(v){
     v = Math.round(v*10)/10;
-    if(v<1) v=1;
-    if(v>3) v=3;
-    zoom = v;
-    apply();
+    if(v<1) v=1; if(v>3) v=3;
+    zoom = v; apply();
   }
 
   document.getElementById('plus').onclick  = function(){ setZ(zoom+0.1); };
   document.getElementById('minus').onclick = function(){ setZ(zoom-0.1); };
   document.getElementById('reload').onclick = function(){
-    loaded = false;
-    tip.style.display='block';
-    tip.innerHTML='正在重新加载…';
-    try{ wr.src = 'https://weread.qq.com/?t=' + (new Date()).getTime(); }
-    catch(e){ try{ wr.contentWindow.location.reload(); }catch(e2){} }
+    loaded=false;
+    note.style.display='none';
+    try{ wr.src = 'https://weread.qq.com/?t='+(new Date()).getTime(); }catch(e){}
   };
-  document.getElementById('open').onclick = function(){
-    var ok = false;
-    try{ ok = !!window.open('https://weread.qq.com/','_blank'); }catch(e){ ok=false; }
-    if(!ok){ window.location.href = 'https://weread.qq.com/'; }
-  };
-  document.getElementById('helpBtn').onclick = function(){ help.style.display='block'; };
-  document.getElementById('helpClose').onclick = function(){ help.style.display='none'; };
 
   wr.onload = function(){
     loaded = true;
-    tip.style.display = 'none';
     apply();
+    /* 内容出来后测一次缩放能力（此时用户在看加载，跳动不明显） */
+    setTimeout(function(){
+      if(!probed){
+        probe(function(){
+          apply();
+          if(mode==='none'){
+            note.innerHTML = '此设备不支持整页放大：请点页面底部「字体」按钮调大字号，效果更好。';
+            note.style.display = 'block';
+            setTimeout(function(){ note.style.display='none'; }, 12000);
+          }
+        });
+      }
+    }, 400);
   };
 
-  window.onresize = function(){ tries=0; apply(); };
+  window.onresize = function(){ measure(); apply(); };
 
-  /* 老内核里 iframe 尺寸/布局可能延迟就绪，多点重算几次 */
+  measure();
   apply();
-  setTimeout(function(){ tries=0; apply(); }, 300);
-  setTimeout(function(){ tries=0; apply(); }, 1200);
-  setTimeout(function(){
-    if(!loaded){
-      tip.style.display='block';
-      tip.innerHTML='内容还没出来。若一直空白，请点右上「?」看诊断，或点「原页」直接打开。';
-    }
-  }, 8000);
+  setTimeout(function(){ measure(); apply(); }, 400);
+  setTimeout(function(){ measure(); apply(); }, 1500);
 })();
 </script>
 </body>
