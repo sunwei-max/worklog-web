@@ -816,6 +816,8 @@ $('nextM').addEventListener('click',function(){ curMonth++; if(curMonth>12){curM
 $('exportBtn').addEventListener('click',async function(){
   tip('正在同步最新数据…','#2f7de1');
   try{ await doQuickSync(true); }catch(e){}   // 导出前先拉取云端最新，避免导出旧数据
+  normalizeLocal();                           // 再规整一次：同名重复类别合并，保证表格不丢行
+  renderCatList(); renderRecord(); renderMonth();
   var md=monthData(curYear,curMonth);
   var name=getProfile().name||'';
   var anyData=md.cats.some(function(c){ return md.grid[c.id].total!==0; });
@@ -1188,6 +1190,61 @@ async function doQuickBackup(){
 // 取记录/类别的"创建时间戳"用于合并时比较新旧（id = Date.now().toString(36)+随机，前 8 位即毫秒时间戳的 36 进制）
 function rankOf(o){ try{ return parseInt((''+(o&&o.id||'')).slice(0,8),36)||0; }catch(e){ return 0; } }
 
+// 类别名归一（忽略空格差异），用于识别"同名不同 id"的重复类别
+function normName(s){ return String(s==null?'':s).replace(/\s+/g,''); }
+
+// 同名类别去重（关键修复）：
+// 不同浏览器各自初始化类别时 id 不同，同步按 id 求并集会导致同一类别出现多份，
+// 进而"统计重复相加、导出按名称只认其中一份而丢行"。
+// 处理：同名只保留最早创建的那一份（各设备结果一致），其余 id 的记录改指到它；
+// 同一天同一类别只留一份数值（取绝对值更大者，避免缩水），文字合并。
+function dedupeByName(cats, records){
+  cats=(cats||[]).filter(function(c){ return c&&c.id; });
+  records=records||[];
+  var byName={}, order=[];
+  cats.forEach(function(c){
+    var k=normName(c.name)||('__'+c.id);
+    if(!byName[k]){ byName[k]=[]; order.push(k); }
+    byName[k].push(c);
+  });
+  var remap={}, outCats=[];
+  order.forEach(function(k){
+    var arr=byName[k];
+    arr.sort(function(a,b){
+      var ra=rankOf(a), rb=rankOf(b);
+      if(ra!==rb) return ra-rb;                       // 早创建的优先，保证各设备选出同一个
+      return (''+a.id)<(''+b.id)?-1:1;
+    });
+    outCats.push(arr[0]);
+    for(var i=1;i<arr.length;i++){ remap[arr[i].id]=arr[0].id; }
+  });
+  var catIds={}; outCats.forEach(function(c){ catIds[c.id]=1; });
+  var map={}, outRecs=[], orphans=[];
+  records.forEach(function(r){
+    if(!r||!r.date) return;
+    var cid=remap[r.catId]||r.catId;
+    if(!catIds[cid]){ orphans.push(r); return; }       // 类别已不存在的孤立记录，原样保留不删
+    var key=cid+'|'+r.date;
+    var nr={id:r.id, catId:cid, date:r.date, qty:r.qty, text:r.text||''};
+    var ex=map[key];
+    if(!ex){ map[key]=nr; return; }
+    var a=Math.abs(nr.qty||0), b=Math.abs(ex.qty||0);
+    var win=(a>b)?nr:ex, lose=(a>b)?ex:nr;
+    var t1=(win.text||'').trim(), t2=(lose.text||'').trim();
+    if(t2 && t1.indexOf(t2)<0){ win.text = t1 ? (t1+'；'+t2) : t2; }
+    map[key]=win;
+  });
+  Object.keys(map).forEach(function(k){ outRecs.push(map[k]); });
+  return {cats:outCats, records:outRecs.concat(orphans)};
+}
+
+// 就地规整本机数据（不触发自动同步，避免死循环）
+function normalizeLocal(){
+  var res=dedupeByName(load(KEY_CATS,[]), getRecords());
+  save(KEY_CATS,res.cats); save(KEY_RECORDS,res.records);
+  return res;
+}
+
 // 按记录维度合并两端数据：同一 (catId,date) 取较新者；各自新增的都保留；类别按 id 取较新者；profile 本机优先
 function mergeData(local, cloud){
   var lrec=local.records||[], crec=cloud.records||[];
@@ -1216,7 +1273,8 @@ function mergeData(local, cloud){
   var cp=cloud.profile||{}, lp=local.profile||{};
   var profile=Object.assign({}, cp, lp);            // 本机覆盖云端
   if(!profile.unit) profile.unit=cp.unit||'';        // unit 本机为空时回退云端
-  return {profile:profile, cats:cats, records:records};
+  var nd=dedupeByName(cats, records);                // 同名重复类别合并，防止统计翻倍/导出丢行
+  return {profile:profile, cats:nd.cats, records:nd.records};
 }
 
 async function doQuickSync(silent){
@@ -1305,6 +1363,7 @@ async function doQuickSync(silent){
  *  初始化
  * ========================================================================= */
 recDate.value=todayStr();
+normalizeLocal();     // 启动即规整：合并历史上同名的重复类别，避免统计翻倍/导出丢行
 getCats();
 refreshWho();
 renderCatList();
