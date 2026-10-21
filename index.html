@@ -1010,7 +1010,8 @@ async function ghGetFile(repo,branch,path){
   var repoEnc=repo.split('/').map(encodeURIComponent).join('/');
   var api='https://api.github.com/repos/'+repoEnc+'/contents/'+ghEncodePath(path);
   var head={'Authorization':'Bearer '+quickCfg().token,'Accept':'application/vnd.github+json'};
-  var r=await gfetch(api+'?ref='+encodeURIComponent(branch),{headers:head});
+  // 必须禁止缓存：GitHub API 的响应默认带 60 秒缓存，同步时读到旧版本会直接覆盖对方新数据
+  var r=await gfetch(api+'?ref='+encodeURIComponent(branch)+'&t='+Date.now(),{headers:head,cache:'no-store'});
   if(r.status===404) throw new Error('仓库中还没有备份文件，请先在另一端备份');
   if(!r.ok){ var e=await r.json().catch(function(){return {};}); throw new Error(e.message||('HTTP '+r.status)); }
   var d=await r.json();
@@ -1265,7 +1266,10 @@ function mergeData(local, cloud){
   function putCat(c){
     if(!c||!c.id) return;
     var ex=cmap[c.id];
-    if(!ex || rankOf(c)>rankOf(ex)) cmap[c.id]=c;
+    if(!ex){ cmap[c.id]=c; return; }
+    var ra=rankOf(c), rb=rankOf(ex);
+    if(ra!==rb){ if(ra>rb) cmap[c.id]=c; return; }
+    if(JSON.stringify(c)>JSON.stringify(ex)) cmap[c.id]=c;   // 确定性兜底，避免两端各留一份
   }
   lcat.forEach(putCat);
   ccat.forEach(putCat);
