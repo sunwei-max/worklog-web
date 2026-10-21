@@ -137,6 +137,19 @@
     padding:12px 20px; border-radius:12px; font-size:14px; z-index:99; opacity:0; transition:opacity .2s; pointer-events:none;
   }
   .toast.show{opacity:1;}
+  /* 首页一键条 */
+  .quickbar{display:flex; flex-wrap:wrap; gap:8px; margin:2px 0 10px;}
+  .qbtn{
+    flex:1; min-width:86px; padding:15px 6px; border:none; border-radius:12px;
+    font-size:17px; font-weight:700; color:#fff; letter-spacing:1px;
+    box-shadow:0 2px 6px rgba(0,0,0,.12);
+  }
+  .qbtn:active{opacity:.82; transform:translateY(1px);}
+  .qb-backup{background:#2f7de1;}
+  .qb-sync{background:#1a9d5a;}
+  .qb-export{background:#8a5cd6;}
+  .qtip{width:100%; font-size:12px; color:#8a8f99; text-align:center; line-height:1.7;}
+  .qtip b{color:#2f7de1;}
 </style>
 </head>
 <body>
@@ -148,6 +161,12 @@
 
   <!-- 打卡 -->
   <section id="tab-record">
+    <div class="quickbar">
+      <button class="qbtn qb-backup" id="btnBackup">备份</button>
+      <button class="qbtn qb-sync" id="btnSync">同步</button>
+      <button class="qbtn qb-export" id="btnExport">导出</button>
+      <div class="qtip" id="syncTip">手机、电脑填同一个名字，点<b>同步</b>就一致</div>
+    </div>
     <div class="datebar">
       <label>日期</label>
       <input type="date" id="recDate" />
@@ -178,9 +197,9 @@
       <label>姓名（导出标题 / 文件名用，如：王娇娇）</label>
       <input type="text" id="setName" placeholder="如：王娇娇" />
     </div>
-    <div class="card">
-      <h3>跨设备备份 / 恢复（GitHub 私有仓库）</h3>
-      <div class="about" style="margin-bottom:8px;">把每月工作量表格（.xlsx）和完整数据（.json）自动提交到你的 GitHub <b>私有仓库</b>作为云端备份。需自备一个 Personal Access Token（勾选 <code>repo</code> 权限；建议用 fine-grained token 仅授权该备份仓库）。Token 仅保存在本浏览器，不上传他人。</div>
+    <details class="card" style="padding:12px 14px;">
+      <summary style="cursor:pointer; font-weight:700; color:#2f7de1; font-size:14px;">高级设置（换 Token 时才用，平时不用管）</summary>
+      <div class="about" style="margin:10px 0 8px;">首页的「备份 / 同步」按钮能用了，就不用来这里。Token 只存在本机浏览器。</div>
       <label>GitHub Token（PAT）</label>
       <input type="password" id="ghToken" placeholder="ghp_..." />
       <label>仓库（owner/repo）</label>
@@ -198,7 +217,7 @@
         <button class="btn" id="ghRestore">从仓库恢复</button>
       </div>
       <div class="about" id="ghStatus" style="margin-top:10px; color:var(--blue);">未配置</div>
-    </div>
+    </details>
     <div class="card" style="display:none;">
       <h3>云同步（跨手机 / 电脑自动一致）</h3>
       <div class="about" style="margin-bottom:8px;">在各设备输入<b>同一个「同步码」</b>即可自动同步。数据在你浏览器端用同步码加密后才上传，云端只存密文，隐私可控。云同步需通过在线地址（扫码打开的网页）使用；本机双击文件模式仅本地保存。</div>
@@ -409,7 +428,7 @@ function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(
 function load(k,def){ try{ var v=localStorage.getItem(k); return v?JSON.parse(v):def; }catch(e){ return def; } }
 function save(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
 function getProfile(){ return load(KEY_PROFILE,{name:'',unit:''}); }
-function setProfile(p){ save(KEY_PROFILE,p); refreshWho(); scheduleSync(); scheduleGHBackup(); }
+function setProfile(p){ save(KEY_PROFILE,p); touchLocal(); refreshWho(); scheduleSync(); scheduleGHBackup(); }
 function getCats(){
   var c=load(KEY_CATS,null);
   if(c===null){ c=seedCats(); save(KEY_CATS,c); }
@@ -422,9 +441,9 @@ function getCats(){
   });
   return c;
 }
-function setCats(c){ save(KEY_CATS,c); scheduleSync(); scheduleGHBackup(); }
+function setCats(c){ save(KEY_CATS,c); touchLocal(); scheduleSync(); scheduleGHBackup(); }
 function getRecords(){ return load(KEY_RECORDS,[]); }
-function setRecords(r){ save(KEY_RECORDS,r); scheduleSync(); scheduleGHBackup(); }
+function setRecords(r){ save(KEY_RECORDS,r); touchLocal(); scheduleSync(); scheduleGHBackup(); }
 
 /* ---------- 记录读写 ---------- */
 function valueFor(catId,date){
@@ -928,17 +947,28 @@ function setGHCfg(c){ try{ localStorage.setItem(KEY_GH,JSON.stringify(c)); }catc
 function ghStatus(s,ok){ var el=$('ghStatus'); if(!el) return; el.textContent=s; if(ok!==undefined) el.style.color=ok?'#1a7f37':'#c0392b'; }
 function utf8ToB64(str){ return b64enc(new Uint8Array(strToUtf8(str))); }
 function ghEncodePath(p){ return p.split('/').map(encodeURIComponent).join('/'); }
+// 带超时的 fetch：网络卡住 15 秒就放弃，避免按钮一直转
+function gfetch(url,opt,ms){
+  opt=opt||{};
+  var ctl=(typeof AbortController!=='undefined')?new AbortController():null;
+  var timer=null;
+  if(ctl){ opt.signal=ctl.signal; timer=setTimeout(function(){ try{ctl.abort();}catch(e){} }, ms||15000); }
+  return fetch(url,opt).then(function(r){ if(timer) clearTimeout(timer); return r; },
+                             function(e){ if(timer) clearTimeout(timer); throw e; });
+}
 async function ghPutFile(repo,branch,path,contentB64,msg){
   var repoEnc=repo.split('/').map(encodeURIComponent).join('/');
   var api='https://api.github.com/repos/'+repoEnc+'/contents/'+ghEncodePath(path);
   var head={'Authorization':'Bearer '+getGHCfg().token,'Accept':'application/vnd.github+json','Content-Type':'application/json'};
   var sha=null;
-  try{ var g=await fetch(api+'?ref='+encodeURIComponent(branch),{headers:head}); if(g.status===200){ sha=(await g.json()).sha; } }catch(e){}
-  for(var i=0;i<2;i++){
+  for(var i=0;i<3;i++){
+    if(!sha){
+      try{ var g=await gfetch(api+'?ref='+encodeURIComponent(branch)+'&t='+Date.now(),{headers:head,cache:'no-store'}); if(g.status===200){ sha=(await g.json()).sha; } }catch(e){}
+    }
     var body={message:msg,content:contentB64,branch:branch}; if(sha) body.sha=sha;
-    var r=await fetch(api,{method:'PUT',headers:head,body:JSON.stringify(body)});
+    var r=await gfetch(api,{method:'PUT',headers:head,body:JSON.stringify(body)});
     if(r.status===200||r.status===201){ return true; }
-    if(r.status===409){ try{ var g2=await fetch(api+'?ref='+encodeURIComponent(branch),{headers:head}); if(g2.status===200) sha=(await g2.json()).sha; }catch(e){} continue; }
+    if(r.status===409){ sha=null; await new Promise(function(x){setTimeout(x,800);}); continue; }
     var err=await r.json().catch(function(){return{};}); throw new Error(err.message||('HTTP '+r.status));
   }
   throw new Error('更新冲突，请重试');
@@ -974,7 +1004,7 @@ async function ghGetFile(repo,branch,path){
   var repoEnc=repo.split('/').map(encodeURIComponent).join('/');
   var api='https://api.github.com/repos/'+repoEnc+'/contents/'+ghEncodePath(path);
   var head={'Authorization':'Bearer '+getGHCfg().token,'Accept':'application/vnd.github+json'};
-  var r=await fetch(api+'?ref='+encodeURIComponent(branch),{headers:head});
+  var r=await gfetch(api+'?ref='+encodeURIComponent(branch),{headers:head});
   if(r.status===404) throw new Error('仓库中还没有备份文件，请先在另一端备份');
   if(!r.ok){ var e=await r.json().catch(function(){return {};}); throw new Error(e.message||('HTTP '+r.status)); }
   var d=await r.json();
@@ -1019,16 +1049,173 @@ function scheduleGHBackup(){
   $('ghSave').addEventListener('click',function(){
     var cc=getGHCfg();
     cc.token=$('ghToken').value.trim();
-    cc.repo=$('ghRepo').value.trim();
-    cc.branch=$('ghBranch').value.trim()||'main';
-    cc.path=$('ghPath').value.trim()||'worklog-backup.xlsx';
+    cc.repo=$('ghRepo').value.trim()||GH_DEFAULT.repo;
+    cc.branch=$('ghBranch').value.trim()||GH_DEFAULT.branch;
+    cc.path=$('ghPath').value.trim()||GH_DEFAULT.path;
     cc.auto=$('ghAuto').checked;
     setGHCfg(cc);
     ghStatus('已保存（'+(cc.auto?'自动':'手动')+'）',true);
-    toast('已保存 GitHub 备份设置');
+    tip('设置已保存，回首页点<b>备份</b>或<b>同步</b>','#1a9d5a');
+    toast('已保存');
   });
-  $('ghBackupNow').addEventListener('click',function(){ backupToGitHub(); });
-  $('ghRestore').addEventListener('click',function(){ restoreFromGitHub(); });
+  $('ghBackupNow').addEventListener('click',function(){ doQuickBackup(); });
+  $('ghRestore').addEventListener('click',function(){ doQuickSync(); });
+})();
+
+/* =========================================================================
+ *  首页「备份 / 同步 / 导出」傻瓜版
+ *  - 仓库、分支、文件名全部预设好，只需一次 Token
+ *  - 「同步」自动比较两端时间，新的一方覆盖旧的一方
+ * ========================================================================= */
+var GH_DEFAULT={repo:'sunwei-max/worklog-backup', branch:'main', path:'worklog-backup.xlsx'};
+var KEY_TS='worklog_last_change';
+var _applyingRemote=false;
+
+function touchLocal(){
+  if(_applyingRemote) return;
+  try{ localStorage.setItem(KEY_TS,String(Date.now())); }catch(e){}
+}
+function localTs(){ return +(localStorage.getItem(KEY_TS)||0); }
+
+function quickCfg(){
+  var c=getGHCfg();
+  return {
+    token:(c.token||'').trim(),
+    repo:((c.repo||'').trim()||GH_DEFAULT.repo),
+    branch:((c.branch||'').trim()||GH_DEFAULT.branch),
+    path:((c.path||'').trim()||GH_DEFAULT.path)
+  };
+}
+function tip(t,color){
+  var el=$('syncTip'); if(!el) return;
+  el.innerHTML=t; el.style.color=color||'#8a8f99';
+}
+function fmtTime(ts){
+  try{ var d=new Date(ts); return (d.getMonth()+1)+'月'+d.getDate()+'日 '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }catch(e){ return ''; }
+}
+function needName(){
+  var nm=((getProfile().name)||'').trim();
+  if(nm) return nm;
+  var v=prompt('先填一下你的名字（用来区分数据，两边填一样的）','');
+  if(v && v.trim()){
+    var p=getProfile(); p.name=v.trim(); setProfile(p);
+    if($('setName')) $('setName').value=v.trim();
+    return v.trim();
+  }
+  return '';
+}
+function needToken(){
+  var c=quickCfg();
+  if(c.token) return c.token;
+  var t=prompt('第一次用，粘贴一次 GitHub Token（只这一次，以后不用再填）\n\n获取：GitHub → Settings → Developer settings → Personal access tokens → Tokens(classic) → Generate new token → 勾选 repo → 复制那串 ghp_...','');
+  if(!t || !t.trim()) return '';
+  t=t.trim();
+  var cc=getGHCfg();
+  cc.token=t; cc.repo=cc.repo||GH_DEFAULT.repo; cc.branch=cc.branch||GH_DEFAULT.branch; cc.path=cc.path||GH_DEFAULT.path;
+  setGHCfg(cc);
+  if($('ghToken')) $('ghToken').value=t;
+  return t;
+}
+function hasLocalData(){
+  var r=getRecords();
+  return (Array.isArray(r) && r.length>0);
+}
+
+async function doQuickBackup(){
+  if(!needName()) return;
+  if(!needToken()) return;
+  var cfg=quickCfg();
+  var jpath=cfg.path.replace(/\.xlsx$/i,'')+'-data.json';
+  tip('正在备份…','#2f7de1');
+  try{
+    var payload={profile:getProfile(),cats:getCats(),records:getRecords(),savedAt:Date.now(),v:2};
+    await ghPutFile(cfg.repo,cfg.branch,jpath,utf8ToB64(JSON.stringify(payload)),'sync '+new Date().toISOString());
+    localStorage.setItem(KEY_TS,String(payload.savedAt));
+    tip('✅ 已备份 '+fmtTime(payload.savedAt),'#1a9d5a');
+    toast('备份好了');
+    // 表格在后台慢慢传，不挡按钮
+    (function(){ try{
+      var md=monthData(curYear,curMonth);
+      var buf=buildXlsx(md,getProfile().name||'');
+      ghPutFile(cfg.repo,cfg.branch,cfg.path,b64enc(buf),'xlsx '+new Date().toISOString()).catch(function(){});
+    }catch(e){} })();
+  }catch(e){
+    tip('⚠️ 备份失败：'+((e&&e.message)||e),'#c0392b');
+    toast('备份失败');
+  }
+}
+
+async function doQuickSync(){
+  if(!needName()) return;
+  if(!needToken()) return;
+  var cfg=quickCfg();
+  var jpath=cfg.path.replace(/\.xlsx$/i,'')+'-data.json';
+  tip('正在同步…','#2f7de1');
+  var cloud=null, getErr=null;
+  try{
+    var b64=await ghGetFile(cfg.repo,cfg.branch,jpath);
+    if(b64){ try{ cloud=JSON.parse(b64ToUtf8(b64)); }catch(e){ cloud=null; } }
+  }catch(e){ getErr=e; }
+  if(getErr && !/还没有备份文件/.test((getErr&&getErr.message)||'')){
+    tip('⚠️ 连不上云端（'+(((getErr&&getErr.message)||getErr)+'').slice(0,40)+'），稍后再点一次','#c0392b');
+    toast('网络不通，稍后再试');
+    return;
+  }
+
+  try{
+    if(cloud && (cloud.records||cloud.profile)){
+      var cts=cloud.savedAt||0;
+      var lts=localTs();
+      var pull;
+      if(!hasLocalData()) pull=true;                 // 本机空 → 拉下来
+      else if(!lts) pull=false;                      // 本机有老数据但没时间戳 → 以本机为准，传上去
+      else pull=(cts>lts+1500);                      // 云端更新 → 拉下来
+      if(pull){
+        _applyingRemote=true;
+        if(cloud.profile) setProfile(cloud.profile);
+        if(cloud.cats) setCats(cloud.cats);
+        if(cloud.records) setRecords(cloud.records);
+        _applyingRemote=false;
+        localStorage.setItem(KEY_TS,String(cts||Date.now()));
+        refreshWho(); if(typeof renderCatList==='function') renderCatList(); if(typeof renderRecord==='function') renderRecord();
+        if($('setName')) $('setName').value=((getProfile().name)||'');
+        tip('✅ 已把另一端的更新拉过来了 ('+fmtTime(cts)+')','#1a9d5a');
+        toast('同步好了');
+        return;
+      }
+    }
+    // 否则：把本机数据传上去
+    var payload={profile:getProfile(),cats:getCats(),records:getRecords(),savedAt:Date.now(),v:2};
+    await ghPutFile(cfg.repo,cfg.branch,jpath,utf8ToB64(JSON.stringify(payload)),'sync '+new Date().toISOString());
+    localStorage.setItem(KEY_TS,String(payload.savedAt));
+    tip('✅ 已把本机的更新传上云端 ('+fmtTime(payload.savedAt)+')','#1a9d5a');
+    toast('同步好了');
+    (function(){ try{
+      var md=monthData(curYear,curMonth);
+      var buf=buildXlsx(md,getProfile().name||'');
+      ghPutFile(cfg.repo,cfg.branch,cfg.path,b64enc(buf),'xlsx '+new Date().toISOString()).catch(function(){});
+    }catch(e){} })();
+  }catch(e){
+    tip('⚠️ 同步失败：'+((e&&e.message)||e),'#c0392b');
+    toast('同步失败');
+  }
+}
+
+(function(){
+  if($('btnBackup')) $('btnBackup').addEventListener('click',function(){ doQuickBackup(); });
+  if($('btnSync')) $('btnSync').addEventListener('click',function(){ doQuickSync(); });
+  if($('btnExport')) $('btnExport').addEventListener('click',function(){
+    try{
+      var md=monthData(curYear,curMonth);
+      var nm=((getProfile().name)||'').trim();
+      var buf=buildXlsx(md,nm);
+      var mm=pad(curMonth);
+      download(curYear+'年'+mm+'月个人工作量统计--'+(nm||'本人')+'.xlsx', buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      toast('已导出表格');
+    }catch(e){ toast('导出失败：'+((e&&e.message)||e)); }
+  });
+  var c=quickCfg(), t=localTs();
+  if(c.token && t) tip('上次同步 '+fmtTime(t)+' · 点<b>同步</b>即可', (Date.now()-t>86400000?'#c0392b':'#8a8f99'));
 })();
 
 /* =========================================================================
