@@ -844,7 +844,7 @@ $('exportBtn').addEventListener('click',function(){
   var safeName=name.trim()?name.trim():'本人';
   download(curYear+'年'+mm+'月个人工作量统计--'+safeName+'.xlsx', buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   toast('已导出 .xlsx');
-  if(getGHCfg().token && getGHCfg().repo){ backupToGitHub(); }
+  if(quickCfg().token && getGHCfg().repo){ backupToGitHub(); }
 });
 
 /* =========================================================================
@@ -973,7 +973,7 @@ function gfetch(url,opt,ms){
 async function ghPutFile(repo,branch,path,contentB64,msg){
   var repoEnc=repo.split('/').map(encodeURIComponent).join('/');
   var api='https://api.github.com/repos/'+repoEnc+'/contents/'+ghEncodePath(path);
-  var head={'Authorization':'Bearer '+getGHCfg().token,'Accept':'application/vnd.github+json','Content-Type':'application/json'};
+  var head={'Authorization':'Bearer '+quickCfg().token,'Accept':'application/vnd.github+json','Content-Type':'application/json'};
   var sha=null;
   for(var i=0;i<3;i++){
     if(!sha){
@@ -1017,7 +1017,7 @@ function b64ToUtf8(b64){
 async function ghGetFile(repo,branch,path){
   var repoEnc=repo.split('/').map(encodeURIComponent).join('/');
   var api='https://api.github.com/repos/'+repoEnc+'/contents/'+ghEncodePath(path);
-  var head={'Authorization':'Bearer '+getGHCfg().token,'Accept':'application/vnd.github+json'};
+  var head={'Authorization':'Bearer '+quickCfg().token,'Accept':'application/vnd.github+json'};
   var r=await gfetch(api+'?ref='+encodeURIComponent(branch),{headers:head});
   if(r.status===404) throw new Error('仓库中还没有备份文件，请先在另一端备份');
   if(!r.ok){ var e=await r.json().catch(function(){return {};}); throw new Error(e.message||('HTTP '+r.status)); }
