@@ -182,6 +182,7 @@
     <div class="datebar">
       <label>日期</label>
       <input type="date" id="recDate" />
+      <button class="btn red" id="clearDay" style="padding:8px 12px;white-space:nowrap;">清空本日</button>
     </div>
     <input class="search" id="recSearch" placeholder="搜索项目（如：急诊、剖宫、抢救）" />
     <div class="summary">
@@ -900,13 +901,36 @@ $('impFile').addEventListener('change',function(e){
 });
 $('clearMonth').addEventListener('click',function(){
   if(!confirm('确认清空本月全部打卡记录？')) return;
-  var y=curYear, m=pad(curMonth), prefix=y+'-'+m;
-  setRecords(getRecords().filter(function(r){ return !(r.date&&r.date.indexOf(prefix)===0); }));
+  var y=curYear, m=pad(curMonth), prefix=y+'-'+m, now=Date.now();
+  // 改用墓碑（del=1）而非物理删除：否则云端旧数据会在同步时被合并带回来，清空无效
+  var recs=getRecords().map(function(r){
+    if(r.date && r.date.indexOf(prefix)===0){ r.qty=0; r.text=''; r.mtime=now; r.del=1; }
+    return r;
+  });
+  setRecords(recs);
   renderRecord(); renderMonth(); toast('已清空本月');
+  doQuickSync(true).catch(function(){});   // 立刻把清空（墓碑）推到云端，确保不被同步覆盖回来
 });
 $('clearAll').addEventListener('click',function(){
   if(!confirm('确认清空全部打卡记录（类别与姓名保留）？')) return;
-  setRecords([]); renderRecord(); renderMonth(); toast('已清空全部');
+  var now=Date.now();
+  // 同样用墓碑而非物理清空，保证清空动作能同步到云端、不被合并带回来
+  var recs=getRecords().map(function(r){ r.qty=0; r.text=''; r.mtime=now; r.del=1; return r; });
+  setRecords(recs);
+  renderRecord(); renderMonth(); toast('已清空全部');
+  doQuickSync(true).catch(function(){});
+});
+$('clearDay').addEventListener('click',function(){
+  var date=recDate.value||todayStr();
+  if(!confirm('确认清空 '+date+' 当天所有打卡记录？')) return;
+  var now=Date.now();
+  var recs=getRecords().map(function(r){
+    if(r.date===date){ r.qty=0; r.text=''; r.mtime=now; r.del=1; }
+    return r;
+  });
+  setRecords(recs);
+  renderRecord(); renderMonth(); toast('已清空 '+date);
+  doQuickSync(true).catch(function(){});   // 同样立即推云端，避免被同步覆盖回来
 });
 $('saveSync').addEventListener('click',function(){
   var c=$('syncCode').value.trim();
