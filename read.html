@@ -11,22 +11,20 @@
   #bar{position:absolute;left:0;top:0;width:100%;border-collapse:collapse;
        border-bottom:1px solid #000;background:#fff;}
   #bar td{padding:0;vertical-align:middle;white-space:nowrap;}
-  #bar .t{font-size:12px;font-weight:bold;padding:0 5px;}
-  #bar button{font-size:14px;line-height:1;padding:4px 7px;margin:2px;border:1px solid #000;
+  #bar button{font-size:14px;line-height:1;padding:4px 8px;margin:2px;border:1px solid #000;
        background:#fff;color:#000;border-radius:4px;-webkit-appearance:none;
        appearance:none;font-family:inherit;}
-  #bar .pct{font-size:12px;padding:0 4px;text-decoration:underline;}
+  #bar .pct{font-size:12px;padding:0 5px;text-decoration:underline;}
   #bar .gap{width:100%;}
   #stage{position:absolute;left:0;background:#fff;overflow:hidden;}
   #wr{position:absolute;left:0;top:0;border:0;background:#fff;}
-  #note{position:absolute;left:0;right:0;top:0;background:#000;color:#fff;
-       font-size:13px;line-height:1.5;padding:6px 8px;display:none;z-index:5;}
+  /* 白色遮挡：只盖住最底部那行“阅读器”，不改 iframe 布局，所以不会切到翻页按钮 */
+  #mask{position:absolute;left:0;right:0;bottom:0;background:#fff;height:0;z-index:3;}
 </style>
 </head>
 <body>
 
 <table id="bar" cellspacing="0" cellpadding="0" border="0"><tr>
-  <td class="t">微读</td>
   <td><button id="minus">A−</button></td>
   <td><button id="plus">A＋</button></td>
   <td class="pct" id="pct">150%</td>
@@ -35,144 +33,73 @@
 </tr></table>
 
 <div id="stage">
-  <div id="note"></div>
   <iframe id="wr" src="https://weread.qq.com/"></iframe>
+  <div id="mask"></div>
 </div>
 
 <script>
 (function(){
-  var bar  = document.getElementById('bar');
-  var stage= document.getElementById('stage');
-  var wr   = document.getElementById('wr');
-  var pct  = document.getElementById('pct');
-  var note = document.getElementById('note');
+  var stage=document.getElementById('stage'),
+      wr=document.getElementById('wr'),
+      bar=document.getElementById('bar'),
+      pct=document.getElementById('pct'),
+      mask=document.getElementById('mask');
 
-  var MINZ = 1.0, MAXZ = 1.6;   /* 上限 160%：再窄微信读书会切成手机布局，正文反而不见 */
-  var zoom = 1.5;
+  var MINZ=1.0, MAXZ=1.6, zoom=1.5;
   try{ var s=localStorage.getItem('wr_zoom'); if(s) zoom=parseFloat(s); }catch(e){}
   if(!(zoom>=MINZ)) zoom=1.5;
   if(zoom>MAXZ) zoom=MAXZ;
 
-  var W=0,H=0,BH=0,sw=0,sh=0;
-  var mode=null;          /* 'transform' | 'zoom' | 'none' */
-  var probed=false;
+  var MASK_BASE = 42;   /* 100% 时盖住的高度，随倍数等比放大 */
 
-  function measure(){
-    W = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth || 600;
-    H = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight || 800;
+  function apply(){
+    var W = window.innerWidth || document.documentElement.clientWidth || 600;
+    var H = window.innerHeight || document.documentElement.clientHeight || 800;
     bar.style.width = W+'px';
-    BH = bar.offsetHeight || 0;
+    var BH = bar.offsetHeight || 0;
     if(BH < 20) BH = 28;
     stage.style.top = BH+'px';
     stage.style.width = W+'px';
     stage.style.height = (H-BH)+'px';
-    sw = stage.clientWidth  || W;
-    sh = stage.clientHeight || (H-BH);
-    return (sw>40 && sh>40);
-  }
 
-  function rectW(){
-    try{ var r = wr.getBoundingClientRect(); if(r && r.width) return r.width; }catch(e){}
-    return wr.offsetWidth || 0;
-  }
-  function clearFx(){
-    try{ wr.style.transform=''; wr.style.webkitTransform=''; }catch(e){}
-    try{ wr.style.zoom=''; }catch(e){}
-    wr.style.transformOrigin='0 0';
-    wr.style.webkitTransformOrigin='0 0';
-  }
+    var sw = stage.clientWidth || W;
+    var sh = stage.clientHeight || (H-BH);
+    var z = zoom;
 
-  function probe(done){
-    if(!measure()){ setTimeout(function(){ probe(done); }, 200); return; }
-    var z = 1.2;
-    clearFx();
     wr.style.width  = Math.round(sw/z)+'px';
     wr.style.height = Math.round(sh/z)+'px';
-    wr.style.webkitTransform = 'scale('+z+')';
+    wr.style.transformOrigin = '0 0';
+    wr.style.webkitTransformOrigin = '0 0';
     wr.style.transform       = 'scale('+z+')';
-    setTimeout(function(){
-      if(rectW() > sw*0.95){ mode='transform'; clearFx(); probed=true; done&&done(); return; }
-      clearFx();
-      wr.style.zoom = String(z);
-      setTimeout(function(){
-        mode = (rectW() > sw*0.95) ? 'zoom' : 'none';
-        clearFx(); probed=true; done&&done();
-      }, 160);
-    }, 160);
-  }
+    wr.style.webkitTransform = 'scale('+z+')';
 
-  function apply(){
-    if(!measure()){ setTimeout(apply, 200); return; }
-    /* 若不支持任何缩放，就老老实实铺满、不压窄，避免又小又窄 */
-    var z = (mode==='none') ? 1 : zoom;
-    var iw = Math.round(sw/z), ih = Math.round(sh/z);
-
-    wr.style.width  = iw+'px';
-    wr.style.height = ih+'px';
-
-    if(mode==='transform' && z!==1){
-      clearFx();
-      wr.style.webkitTransform = 'scale('+z+')';
-      wr.style.transform       = 'scale('+z+')';
-    }else if(mode==='zoom' && z!==1){
-      clearFx();
-      wr.style.zoom = String(z);
-    }else{
-      clearFx();
-    }
+    mask.style.height = Math.round(MASK_BASE * z) + 'px';
     pct.innerHTML = Math.round(z*100)+'%';
-    try{ localStorage.setItem('wr_zoom', String(zoom)); }catch(e){}
+    try{ localStorage.setItem('wr_zoom', String(z)); }catch(e){}
   }
 
   function setZ(v){
-    if(mode==='none'){ showNote('此设备不支持整页放大，请点阅读页底部的「字体」按钮调大字号。'); return; }
-    var old = zoom;
     v = Math.round(v*10)/10;
-    if(v<MINZ) v=MINZ;
-    if(v>MAXZ) v=MAXZ;
+    if(v < MINZ) v = MINZ;
+    if(v > MAXZ) v = MAXZ;
+    if(v === zoom) return;
     zoom = v;
     apply();
-    if(v===MAXZ && old!==MAXZ){
-      showNote('已到上限 160%：再放大微信读书会切成手机布局、正文反而看不到。想更大请用阅读页底部「字体」。');
-    }
-  }
-
-  var noteTimer=null;
-  function showNote(txt, ms){
-    note.innerHTML = txt;
-    note.style.display = 'block';
-    if(noteTimer) clearTimeout(noteTimer);
-    noteTimer = setTimeout(function(){ note.style.display='none'; }, ms||9000);
   }
 
   document.getElementById('plus').onclick  = function(){ setZ(zoom+0.1); };
   document.getElementById('minus').onclick = function(){ setZ(zoom-0.1); };
-  pct.onclick = function(){ zoom=1; apply(); };     /* 点数字一键回到 100% */
+  pct.onclick = function(){ zoom = 1; apply(); };          /* 点数字回 100% */
   document.getElementById('reload').onclick = function(){
-    note.style.display='none';
     try{ wr.src = 'https://weread.qq.com/?t='+(new Date()).getTime(); }catch(e){}
   };
 
-  wr.onload = function(){
-    apply();
-    setTimeout(function(){
-      if(!probed){
-        probe(function(){
-          apply();
-          if(mode==='none'){
-            showNote('此设备不支持整页放大：请点阅读页底部「字体」按钮调大字号，效果更好也更省电。', 15000);
-          }
-        });
-      }
-    }, 400);
-  };
+  wr.onload = apply;
+  window.onresize = apply;
 
-  window.onresize = function(){ measure(); apply(); };
-
-  measure();
   apply();
-  setTimeout(function(){ measure(); apply(); }, 400);
-  setTimeout(function(){ measure(); apply(); }, 1500);
+  setTimeout(apply, 600);
+  setTimeout(apply, 1800);
 })();
 </script>
 </body>
