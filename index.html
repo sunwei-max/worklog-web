@@ -835,7 +835,13 @@ function refreshWho(){
   $('whoSub').innerHTML = p.name ? ('本地保存 · <b>'+esc(p.name)+'</b>') : '本地保存 · 未设置姓名';
 }
 $('setName').addEventListener('change',function(){
-  var p=getProfile(); p.name=$('setName').value.trim(); setProfile(p); toast('已保存');
+  var oldName=getProfile().name||'';
+  var newName=$('setName').value.trim();
+  if(!newName){ $('setName').value=oldName; toast('名字不能为空'); return; }
+  if(newName===oldName){ return; }
+  _switching=true;                          // 切换期间抑制自动上传，避免污染新人文件
+  var p=getProfile(); p.name=newName; save(KEY_PROFILE,p); refreshWho();
+  switchUser(newName);
 });
 var sel=$('newCatGroup');
 GROUPS.forEach(function(g){ var o=document.createElement('option'); o.value=g; o.textContent=g; sel.appendChild(o); });
@@ -1026,13 +1032,57 @@ async function restoreFromGitHub(){
 // 录入改动后自动合并同步（防抖 2.5 秒）；_applyingRemote 期间不触发，避免写回时死循环
 var _autoTimer=null;
 function scheduleAutoSync(){
-  if(_applyingRemote) return;
+  if(_applyingRemote || _switching) return;
   if(!((getProfile().name||'').trim())) return;   // 没填名字就不自动同步，等手动
   if(!quickCfg().token) return;
   clearTimeout(_autoTimer);
   _autoTimer=setTimeout(function(){ doQuickSync(true); }, 2500);
 }
 // 高级设置卡片已移除：token / 仓库 / 分支 / 路径均已内置，无需手动配置
+
+// 切换用户：改名后从云端拉取该名字的数据显示（以云端为准）；云端无备份则保持当前数据，不污染
+var _switching=false;
+function switchUser(newName){
+  _switching=true;
+  if(!quickCfg().token){ _switching=false; return; }
+  var cfg=quickCfg();
+  var jpath=userJsonPath(newName);
+  tip('正在切换到「'+newName+'」…','#2f7de1');
+  (async function(){
+    try{
+      var b64=await ghGetFile(cfg.repo,cfg.branch,jpath);
+      var cloud=null;
+      if(b64){ try{ cloud=JSON.parse(b64ToUtf8(b64)); }catch(e){ cloud=null; } }
+      if(cloud && (cloud.records||cloud.profile||cloud.cats)){
+        _applyingRemote=true;
+        if(cloud.cats) setCats(cloud.cats);
+        if(cloud.records) setRecords(cloud.records);
+        var pp=getProfile();
+        if(cloud.profile && cloud.profile.unit!==undefined) pp.unit=cloud.profile.unit;
+        pp.name=newName; save(KEY_PROFILE,pp);
+        _applyingRemote=false;
+        localStorage.setItem(KEY_TS,String(cloud.savedAt||Date.now()));
+        refreshWho(); if(typeof renderCatList==='function') renderCatList(); if(typeof renderRecord==='function') renderRecord();
+        if($('setName')) $('setName').value=newName;
+        tip('✅ 已切换到「'+newName+'」('+fmtTime(cloud.savedAt||Date.now())+')','#1a9d5a');
+        toast('已切换到 '+newName);
+      } else {
+        tip('「'+newName+'」云端还没有备份，已保持当前数据','#c0392b');
+        toast('该名字还没有云端数据');
+      }
+    } catch(e){
+      if(/还没有备份文件/.test((e&&e.message)||'')){
+        tip('「'+newName+'」云端还没有备份，已保持当前数据','#c0392b');
+        toast('该名字还没有云端数据');
+      } else {
+        tip('⚠️ 切换失败：'+((e&&e.message)||e).toString().slice(0,40),'#c0392b');
+        toast('切换失败');
+      }
+    } finally {
+      _switching=false;
+    }
+  })();
+}
 
 /* =========================================================================
  *  首页「备份 / 同步 / 导出」傻瓜版
@@ -1082,8 +1132,9 @@ function needName(){
   if(nm) return nm;
   var v=prompt('先填一下你的名字（用来区分数据，两边填一样的）','');
   if(v && v.trim()){
-    var p=getProfile(); p.name=v.trim(); setProfile(p);
+    var p=getProfile(); p.name=v.trim(); save(KEY_PROFILE,p); refreshWho();
     if($('setName')) $('setName').value=v.trim();
+    switchUser(v.trim());                   // 首次填名字也拉取云端已有数据
     return v.trim();
   }
   return '';
