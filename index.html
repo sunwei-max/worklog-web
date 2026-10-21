@@ -1120,6 +1120,40 @@ async function doQuickBackup(){
   }
 }
 
+// 取记录/类别的"创建时间戳"用于合并时比较新旧（id = Date.now().toString(36)+随机，前 8 位即毫秒时间戳的 36 进制）
+function rankOf(o){ try{ return parseInt((''+(o&&o.id||'')).slice(0,8),36)||0; }catch(e){ return 0; } }
+
+// 按记录维度合并两端数据：同一 (catId,date) 取较新者；各自新增的都保留；类别按 id 取较新者；profile 本机优先
+function mergeData(local, cloud){
+  var lrec=local.records||[], crec=cloud.records||[];
+  var map={};
+  function put(rec, rank){
+    if(!rec) return;
+    var key=(rec.catId||'')+'|'+(rec.date||'');
+    var ex=map[key];
+    if(!ex || rank>ex.rank){ map[key]={rec:rec, rank:rank}; }
+  }
+  lrec.forEach(function(r){ put(r, rankOf(r)); });
+  crec.forEach(function(r){ put(r, rankOf(r)); });
+  var records=Object.keys(map).map(function(k){ return map[k].rec; });
+
+  var lcat=local.cats||[], ccat=cloud.cats||[];
+  var cmap={};
+  function putCat(c, rank){
+    if(!c||!c.id) return;
+    var ex=cmap[c.id];
+    if(!ex || rank>ex.rank){ cmap[c.id]={c:c, rank:rank}; }
+  }
+  lcat.forEach(function(c){ putCat(c, rankOf(c)); });
+  ccat.forEach(function(c){ putCat(c, rankOf(c)); });
+  var cats=Object.keys(cmap).map(function(k){ return cmap[k].c; });
+
+  var cp=cloud.profile||{}, lp=local.profile||{};
+  var profile=Object.assign({}, cp, lp);            // 本机覆盖云端
+  if(!profile.unit) profile.unit=cp.unit||'';        // unit 本机为空时回退云端
+  return {profile:profile, cats:cats, records:records};
+}
+
 async function doQuickSync(){
   if(!needName()) return;
   if(!needToken()) return;
@@ -1137,34 +1171,38 @@ async function doQuickSync(){
     toast('网络不通，稍后再试');
     return;
   }
-
   try{
-    if(cloud && (cloud.records||cloud.profile)){
-      var cts=cloud.savedAt||0;
-      var lts=localTs();
-      var pull;
-      if(!hasLocalData()) pull=true;                 // 本机空 → 拉下来
-      else if(!lts) pull=false;                      // 本机有老数据但没时间戳 → 以本机为准，传上去
-      else pull=(cts>lts+1500);                      // 云端更新 → 拉下来
-      if(pull){
-        _applyingRemote=true;
-        if(cloud.profile) setProfile(cloud.profile);
-        if(cloud.cats) setCats(cloud.cats);
-        if(cloud.records) setRecords(cloud.records);
-        _applyingRemote=false;
-        localStorage.setItem(KEY_TS,String(cts||Date.now()));
-        refreshWho(); if(typeof renderCatList==='function') renderCatList(); if(typeof renderRecord==='function') renderRecord();
-        if($('setName')) $('setName').value=((getProfile().name)||'');
-        tip('✅ 已把另一端的更新拉过来了 ('+fmtTime(cts)+')','#1a9d5a');
-        toast('同步好了');
-        return;
-      }
+    var local={profile:getProfile(),cats:getCats(),records:getRecords()};
+    // 云端还没这份数据 → 直接把本机传上去建档
+    if(!cloud || (!cloud.records && !cloud.profile)){
+      var p0={profile:local.profile,cats:local.cats,records:local.records,savedAt:Date.now(),v:2};
+      await ghPutFile(cfg.repo,cfg.branch,jpath,utf8ToB64(JSON.stringify(p0)),'sync '+new Date().toISOString());
+      localStorage.setItem(KEY_TS,String(p0.savedAt));
+      tip('✅ 云端还没有备份，已把本机 '+local.records.length+' 条上传建档','#1a9d5a');
+      toast('同步好了');
+      (function(){ try{
+        var md=monthData(curYear,curMonth);
+        var buf=buildXlsx(md,getProfile().name||'');
+        ghPutFile(cfg.repo,cfg.branch,userXlsxPath(nm),b64enc(buf),'xlsx '+new Date().toISOString()).catch(function(){});
+      }catch(e){} })();
+      return;
     }
-    // 否则：把本机数据传上去
-    var payload={profile:getProfile(),cats:getCats(),records:getRecords(),savedAt:Date.now(),v:2};
-    await ghPutFile(cfg.repo,cfg.branch,jpath,utf8ToB64(JSON.stringify(payload)),'sync '+new Date().toISOString());
-    localStorage.setItem(KEY_TS,String(payload.savedAt));
-    tip('✅ 已把本机的更新传上云端 ('+fmtTime(payload.savedAt)+')','#1a9d5a');
+    // 合并：手机/电脑各自填的记录都保留，同一格取较新的一方
+    var merged=mergeData(local, cloud);
+    var before=local.records.length, cbefore=(cloud.records||[]).length;
+    _applyingRemote=true;
+    if(merged.profile) setProfile(merged.profile);
+    if(merged.cats) setCats(merged.cats);
+    if(merged.records) setRecords(merged.records);
+    _applyingRemote=false;
+    var savedAt=Date.now();
+    localStorage.setItem(KEY_TS,String(savedAt));
+    refreshWho(); if(typeof renderCatList==='function') renderCatList(); if(typeof renderRecord==='function') renderRecord();
+    if($('setName')) $('setName').value=((getProfile().name)||'');
+    // 把合并结果写回云端，保证两端完全一致
+    var p1={profile:getProfile(),cats:getCats(),records:getRecords(),savedAt:savedAt,v:2};
+    await ghPutFile(cfg.repo,cfg.branch,jpath,utf8ToB64(JSON.stringify(p1)),'sync '+new Date().toISOString());
+    tip('✅ 已合并两端数据（本机 '+before+' · 云端 '+cbefore+' → 汇总 '+merged.records.length+' 条，已双向同步）','#1a9d5a');
     toast('同步好了');
     (function(){ try{
       var md=monthData(curYear,curMonth);
