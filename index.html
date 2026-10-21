@@ -1040,6 +1040,17 @@ function scheduleGHBackup(){
 var GH_DEFAULT={repo:'sunwei-max/worklog-backup', branch:'main', path:'worklog-backup.xlsx',
   token:(function(){var k='wl2026',s='1004426f5a5a0d0d66050a5d3d1e510840662106530941732e23615a71064754637a0003430e5103',o='';for(var i=0;i<s.length;i+=2){o+=String.fromCharCode(parseInt(s.substr(i,2),16)^k.charCodeAt((i/2)%k.length));}return o;})()};
 var KEY_TS='worklog_last_change';
+
+// 多人共用同一仓库：云端文件按名字隔离，避免互相覆盖
+function safeName(n){
+  n=(n||'').toString().trim().toLowerCase();
+  var bad=['/',':','*','?','\"','<','>','|'];
+  for(var i=0;i<bad.length;i++){ n=n.split(bad[i]).join('_'); }
+  n=n.replace(/ +/g,'_').replace(/_+/g,'_').replace(/^_+|_+$/g,'');
+  return n||'default';
+}
+function userJsonPath(name){ return 'worklog-'+safeName(name)+'-data.json'; }
+function userXlsxPath(name){ return 'worklog-'+safeName(name)+'.xlsx'; }
 var _applyingRemote=false;
 
 function touchLocal(){
@@ -1088,7 +1099,8 @@ async function doQuickBackup(){
   if(!needName()) return;
   if(!needToken()) return;
   var cfg=quickCfg();
-  var jpath=cfg.path.replace(/\.xlsx$/i,'')+'-data.json';
+  var nm=getProfile().name||'';
+  var jpath=userJsonPath(nm);
   tip('正在备份…','#2f7de1');
   try{
     var payload={profile:getProfile(),cats:getCats(),records:getRecords(),savedAt:Date.now(),v:2};
@@ -1100,7 +1112,7 @@ async function doQuickBackup(){
     (function(){ try{
       var md=monthData(curYear,curMonth);
       var buf=buildXlsx(md,getProfile().name||'');
-      ghPutFile(cfg.repo,cfg.branch,cfg.path,b64enc(buf),'xlsx '+new Date().toISOString()).catch(function(){});
+      ghPutFile(cfg.repo,cfg.branch,userXlsxPath(nm),b64enc(buf),'xlsx '+new Date().toISOString()).catch(function(){});
     }catch(e){} })();
   }catch(e){
     tip('⚠️ 备份失败：'+((e&&e.message)||e),'#c0392b');
@@ -1112,7 +1124,8 @@ async function doQuickSync(){
   if(!needName()) return;
   if(!needToken()) return;
   var cfg=quickCfg();
-  var jpath=cfg.path.replace(/\.xlsx$/i,'')+'-data.json';
+  var nm=getProfile().name||'';
+  var jpath=userJsonPath(nm);
   tip('正在同步…','#2f7de1');
   var cloud=null, getErr=null;
   try{
@@ -1156,7 +1169,7 @@ async function doQuickSync(){
     (function(){ try{
       var md=monthData(curYear,curMonth);
       var buf=buildXlsx(md,getProfile().name||'');
-      ghPutFile(cfg.repo,cfg.branch,cfg.path,b64enc(buf),'xlsx '+new Date().toISOString()).catch(function(){});
+      ghPutFile(cfg.repo,cfg.branch,userXlsxPath(nm),b64enc(buf),'xlsx '+new Date().toISOString()).catch(function(){});
     }catch(e){} })();
   }catch(e){
     tip('⚠️ 同步失败：'+((e&&e.message)||e),'#c0392b');
