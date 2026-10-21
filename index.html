@@ -1364,16 +1364,7 @@ async function doQuickSync(silent,isBackup){
 (function(){
   if($('btnBackup')) $('btnBackup').addEventListener('click',function(){ doQuickBackup(); });
   if($('btnSync')) $('btnSync').addEventListener('click',function(){ doQuickSync(); });
-  if($('btnExport')) $('btnExport').addEventListener('click',function(){
-    try{
-      var md=monthData(curYear,curMonth);
-      var nm=((getProfile().name)||'').trim();
-      var buf=buildXlsx(md,nm);
-      var mm=pad(curMonth);
-      download(curYear+'年'+mm+'月个人工作量统计--'+(nm||'本人')+'.xlsx', buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      toast('已导出表格');
-    }catch(e){ toast('导出失败：'+((e&&e.message)||e)); }
-  });
+  // 注意：导出按钮只在上面绑一次（带“导出前同步”），这里不要重复绑定，否则会下载两份
   var c=quickCfg(), t=localTs();
   if(c.token && t) tip('上次同步 '+fmtTime(t)+' · 点<b>同步</b>即可', (Date.now()-t>86400000?'#c0392b':'#8a8f99'));
 })();
@@ -1388,6 +1379,11 @@ refreshWho();
 renderCatList();
 renderRecord();
 if(SYNC_ON && HAVE_CRYPTO && getSyncCode()){ pullFromCloud(); }
+// 打开页面就静默同步一次（有名字时）：保证看到的就是云端最新，而不是上次残留的本地旧数据
+setTimeout(function(){
+  if(!((getProfile().name||'').trim())) return;
+  try{ doQuickSync(true).catch(function(){}); }catch(e){}
+}, 1200);
 })();
 </script>
 </body>
