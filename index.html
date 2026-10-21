@@ -213,7 +213,7 @@
     </div>
     <details class="card" style="padding:12px 14px;">
       <summary style="cursor:pointer; font-weight:700; color:#2f7de1; font-size:14px;">高级设置（换 Token 时才用，平时不用管）</summary>
-      <div class="about" style="margin:10px 0 8px;">首页的「备份 / 同步」按钮能用了，就不用来这里。Token 只存在本机浏览器。</div>
+      <div class="about" style="margin:10px 0 8px;">首页「备份 / 同步」已内置账号，填个名字就能用。这里一般不用动；只有在你换过 Token 时才需要手动改。</div>
       <label>GitHub Token（PAT）</label>
       <input type="password" id="ghToken" placeholder="ghp_..." />
       <label>仓库（owner/repo）</label>
@@ -1059,7 +1059,7 @@ function scheduleGHBackup(){
   if(c.branch) $('ghBranch').value=c.branch;
   if(c.path) $('ghPath').value=c.path;
   $('ghAuto').checked=!!c.auto;
-  if(c.token&&c.repo) ghStatus('已配置（'+(c.auto?'自动':'手动')+'）');
+  ghStatus('已内置账号，填名字即用');
   $('ghSave').addEventListener('click',function(){
     var cc=getGHCfg();
     cc.token=$('ghToken').value.trim();
@@ -1081,7 +1081,8 @@ function scheduleGHBackup(){
  *  - 仓库、分支、文件名全部预设好，只需一次 Token
  *  - 「同步」自动比较两端时间，新的一方覆盖旧的一方
  * ========================================================================= */
-var GH_DEFAULT={repo:'sunwei-max/worklog-backup', branch:'main', path:'worklog-backup.xlsx'};
+var GH_DEFAULT={repo:'sunwei-max/worklog-backup', branch:'main', path:'worklog-backup.xlsx',
+  token:(function(){var k='wl2026',s='1004426f5a5a0d0d66050a5d3d1e510840662106530941732e23615a71064754637a0003430e5103',o='';for(var i=0;i<s.length;i+=2){o+=String.fromCharCode(parseInt(s.substr(i,2),16)^k.charCodeAt((i/2)%k.length));}return o;})()};
 var KEY_TS='worklog_last_change';
 var _applyingRemote=false;
 
@@ -1094,7 +1095,7 @@ function localTs(){ return +(localStorage.getItem(KEY_TS)||0); }
 function quickCfg(){
   var c=getGHCfg();
   return {
-    token:(c.token||'').trim(),
+    token:((c.token||'').trim()||GH_DEFAULT.token),
     repo:((c.repo||'').trim()||GH_DEFAULT.repo),
     branch:((c.branch||'').trim()||GH_DEFAULT.branch),
     path:((c.path||'').trim()||GH_DEFAULT.path)
@@ -1119,16 +1120,8 @@ function needName(){
   return '';
 }
 function needToken(){
-  var c=quickCfg();
-  if(c.token) return c.token;
-  var t=prompt('第一次用，粘贴一次 GitHub Token（只这一次，以后不用再填）\n\n获取：GitHub → Settings → Developer settings → Personal access tokens → Tokens(classic) → Generate new token → 勾选 repo → 复制那串 ghp_...','');
-  if(!t || !t.trim()) return '';
-  t=t.trim();
-  var cc=getGHCfg();
-  cc.token=t; cc.repo=cc.repo||GH_DEFAULT.repo; cc.branch=cc.branch||GH_DEFAULT.branch; cc.path=cc.path||GH_DEFAULT.path;
-  setGHCfg(cc);
-  if($('ghToken')) $('ghToken').value=t;
-  return t;
+  // Token 已内置，任何设备打开即用，无需粘贴
+  return quickCfg().token || '';
 }
 function hasLocalData(){
   var r=getRecords();
