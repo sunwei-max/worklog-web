@@ -211,27 +211,6 @@
       <label>姓名（导出标题 / 文件名用，如：王娇娇）</label>
       <input type="text" id="setName" placeholder="如：王娇娇" />
     </div>
-    <details class="card" style="padding:12px 14px;">
-      <summary style="cursor:pointer; font-weight:700; color:#2f7de1; font-size:14px;">高级设置（换 Token 时才用，平时不用管）</summary>
-      <div class="about" style="margin:10px 0 8px;">首页「备份 / 同步」已内置账号，填个名字就能用。这里一般不用动；只有在你换过 Token 时才需要手动改。</div>
-      <label>GitHub Token（PAT）</label>
-      <input type="password" id="ghToken" placeholder="ghp_..." />
-      <label>仓库（owner/repo）</label>
-      <input type="text" id="ghRepo" placeholder="sunwei-max/worklog-backup" />
-      <div class="row2" style="margin-top:8px;">
-        <div style="flex:1;"><label>分支</label><input type="text" id="ghBranch" placeholder="main" value="main" /></div>
-        <div style="flex:1;"><label>文件路径</label><input type="text" id="ghPath" placeholder="worklog-backup.xlsx" value="worklog-backup.xlsx" /></div>
-      </div>
-      <label style="margin-top:8px; display:flex; align-items:center; gap:6px; color:var(--txt); font-size:13px;">
-        <input type="checkbox" id="ghAuto" style="width:auto;" /> 数据变动后自动备份（约 20 秒后）
-      </label>
-      <button class="btn primary" style="width:100%; margin-top:10px;" id="ghSave">保存备份设置</button>
-      <div class="row2" style="margin-top:10px;">
-        <button class="btn" id="ghBackupNow">立即备份</button>
-        <button class="btn" id="ghRestore">从仓库恢复</button>
-      </div>
-      <div class="about" id="ghStatus" style="margin-top:10px; color:var(--blue);">未配置</div>
-    </details>
     <div class="card" style="display:none;">
       <h3>云同步（跨手机 / 电脑自动一致）</h3>
       <div class="about" style="margin-bottom:8px;">在各设备输入<b>同一个「同步码」</b>即可自动同步。数据在你浏览器端用同步码加密后才上传，云端只存密文，隐私可控。云同步需通过在线地址（扫码打开的网页）使用；本机双击文件模式仅本地保存。</div>
@@ -1051,30 +1030,7 @@ function scheduleGHBackup(){
   clearTimeout(_ghTimer);
   _ghTimer=setTimeout(function(){ backupToGitHub(); }, 20000);
 }
-// GitHub 备份设置载入与绑定
-(function(){
-  var c=getGHCfg();
-  if(c.token) $('ghToken').value=c.token;
-  if(c.repo) $('ghRepo').value=c.repo;
-  if(c.branch) $('ghBranch').value=c.branch;
-  if(c.path) $('ghPath').value=c.path;
-  $('ghAuto').checked=!!c.auto;
-  ghStatus('已内置账号，填名字即用');
-  $('ghSave').addEventListener('click',function(){
-    var cc=getGHCfg();
-    cc.token=$('ghToken').value.trim();
-    cc.repo=$('ghRepo').value.trim()||GH_DEFAULT.repo;
-    cc.branch=$('ghBranch').value.trim()||GH_DEFAULT.branch;
-    cc.path=$('ghPath').value.trim()||GH_DEFAULT.path;
-    cc.auto=$('ghAuto').checked;
-    setGHCfg(cc);
-    ghStatus('已保存（'+(cc.auto?'自动':'手动')+'）',true);
-    tip('设置已保存，回首页点<b>备份</b>或<b>同步</b>','#1a9d5a');
-    toast('已保存');
-  });
-  $('ghBackupNow').addEventListener('click',function(){ doQuickBackup(); });
-  $('ghRestore').addEventListener('click',function(){ doQuickSync(); });
-})();
+// 高级设置卡片已移除：token / 仓库 / 分支 / 路径均已内置，无需手动配置
 
 /* =========================================================================
  *  首页「备份 / 同步 / 导出」傻瓜版
