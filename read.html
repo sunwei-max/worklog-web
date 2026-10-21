@@ -5,101 +5,34 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>微读</title>
 <style>
-  html,body{margin:0;padding:0;background:#fff;color:#000;}
-  body{overflow:hidden;-webkit-text-size-adjust:100%;
-       font-family:Helvetica,Arial,"Microsoft YaHei",sans-serif;}
-  #bar{position:absolute;left:0;top:0;width:100%;border-collapse:collapse;
-       border-bottom:1px solid #000;background:#fff;}
-  #bar td{padding:0;vertical-align:middle;white-space:nowrap;}
-  #bar button{font-size:14px;line-height:1;padding:4px 8px;margin:2px;border:1px solid #000;
-       background:#fff;color:#000;border-radius:4px;-webkit-appearance:none;
-       appearance:none;font-family:inherit;}
-  #bar .pct{font-size:12px;padding:0 5px;text-decoration:underline;}
-  #bar .gap{width:100%;}
-  #stage{position:absolute;left:0;background:#fff;overflow:hidden;}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#fff;
+            -webkit-text-size-adjust:100%;}
   #wr{position:absolute;left:0;top:0;border:0;background:#fff;}
-  /* 白色遮挡：只盖住最底部那行“阅读器”，不改 iframe 布局，所以不会切到翻页按钮 */
-  #mask{position:absolute;left:0;right:0;bottom:0;background:#fff;height:0;z-index:3;}
+  #mask{position:absolute;left:0;background:#fff;}
 </style>
 </head>
 <body>
-
-<table id="bar" cellspacing="0" cellpadding="0" border="0"><tr>
-  <td><button id="minus">A−</button></td>
-  <td><button id="plus">A＋</button></td>
-  <td class="pct" id="pct">150%</td>
-  <td class="gap"></td>
-  <td><button id="reload">⟳</button></td>
-</tr></table>
-
-<div id="stage">
-  <iframe id="wr" src="https://weread.qq.com/"></iframe>
-  <div id="mask"></div>
-</div>
-
+<iframe id="wr" src="https://weread.qq.com/"></iframe>
+<div id="mask"></div>
 <script>
 (function(){
-  var stage=document.getElementById('stage'),
-      wr=document.getElementById('wr'),
-      bar=document.getElementById('bar'),
-      pct=document.getElementById('pct'),
-      mask=document.getElementById('mask');
+  var wr=document.getElementById('wr'), mask=document.getElementById('mask');
+  var CLIP=26;                     /* 只盖住最底部“阅读器”那一行，不动其他按钮 */
 
-  var MINZ=1.0, MAXZ=1.6, zoom=1.5;
-  try{ var s=localStorage.getItem('wr_zoom'); if(s) zoom=parseFloat(s); }catch(e){}
-  if(!(zoom>=MINZ)) zoom=1.5;
-  if(zoom>MAXZ) zoom=MAXZ;
-
-  var MASK_BASE = 56;   /* 100% 时“阅读器”那行的高度，遮挡随倍数等比放大 */
-
-  function apply(){
-    var W = window.innerWidth || document.documentElement.clientWidth || 600;
-    var H = window.innerHeight || document.documentElement.clientHeight || 800;
-    bar.style.width = W+'px';
-    var BH = bar.offsetHeight || 0;
-    if(BH < 20) BH = 28;
-    stage.style.top = BH+'px';
-    stage.style.width = W+'px';
-    stage.style.height = (H-BH)+'px';
-
-    var sw = stage.clientWidth || W;
-    var sh = stage.clientHeight || (H-BH);
-    var z = zoom;
-
-    wr.style.width  = Math.round(sw/z)+'px';
-    wr.style.height = Math.round(sh/z)+'px';
-    wr.style.transformOrigin = '0 0';
-    wr.style.webkitTransformOrigin = '0 0';
-    wr.style.transform       = 'scale('+z+')';
-    wr.style.webkitTransform = 'scale('+z+')';
-
-    mask.style.height = Math.round(MASK_BASE * z) + 'px';
-    pct.innerHTML = Math.round(z*100)+'%';
-    try{ localStorage.setItem('wr_zoom', String(z)); }catch(e){}
+  function fit(){
+    var W=(document.documentElement.clientWidth||window.innerWidth||600);
+    var H=(document.documentElement.clientHeight||window.innerHeight||800);
+    wr.style.width=W+'px';
+    wr.style.height=H+'px';
+    mask.style.top=(H-CLIP)+'px';
+    mask.style.width=W+'px';
+    mask.style.height=CLIP+'px';
   }
 
-  function setZ(v){
-    v = Math.round(v*10)/10;
-    if(v < MINZ) v = MINZ;
-    if(v > MAXZ) v = MAXZ;
-    if(v === zoom) return;
-    zoom = v;
-    apply();
-  }
-
-  document.getElementById('plus').onclick  = function(){ setZ(zoom+0.1); };
-  document.getElementById('minus').onclick = function(){ setZ(zoom-0.1); };
-  pct.onclick = function(){ zoom = 1; apply(); };          /* 点数字回 100% */
-  document.getElementById('reload').onclick = function(){
-    try{ wr.src = 'https://weread.qq.com/?t='+(new Date()).getTime(); }catch(e){}
-  };
-
-  wr.onload = apply;
-  window.onresize = apply;
-
-  apply();
-  setTimeout(apply, 600);
-  setTimeout(apply, 1800);
+  fit();
+  window.onresize=fit;
+  setTimeout(fit,800);
+  setTimeout(fit,2000);
 })();
 </script>
 </body>
