@@ -1049,6 +1049,19 @@ function switchUser(newName){
   var jpath=userJsonPath(newName);
   tip('正在切换到「'+newName+'」…','#2f7de1');
   (async function(){
+    function newBlank(){
+      // 云端无此名字 → 新建空白工作表（清空工时、保留类别，并上传建档）
+      _applyingRemote=true;
+      setRecords([]);
+      var pp=getProfile(); pp.name=newName; save(KEY_PROFILE,pp);
+      _applyingRemote=false;
+      refreshWho(); if(typeof renderCatList==='function') renderCatList(); if(typeof renderRecord==='function') renderRecord();
+      if($('setName')) $('setName').value=newName;
+      var blank={profile:getProfile(),cats:getCats(),records:[],savedAt:Date.now(),v:2};
+      ghPutFile(cfg.repo,cfg.branch,userJsonPath(newName),utf8ToB64(JSON.stringify(blank)),'new blank '+new Date().toISOString()).catch(function(){});
+      tip('「'+newName+'」云端还没有备份，已新建空白工作表','#1a9d5a');
+      toast('已新建 '+newName+' 的空白表');
+    }
     try{
       var b64=await ghGetFile(cfg.repo,cfg.branch,jpath);
       var cloud=null;
@@ -1067,22 +1080,11 @@ function switchUser(newName){
         tip('✅ 已切换到「'+newName+'」('+fmtTime(cloud.savedAt||Date.now())+')','#1a9d5a');
         toast('已切换到 '+newName);
       } else {
-        // 云端无此名字 → 新建空白工作表（清空工时、保留类别，并上传建档）
-        _applyingRemote=true;
-        setRecords([]);
-        var pp=getProfile(); pp.name=newName; save(KEY_PROFILE,pp);
-        _applyingRemote=false;
-        refreshWho(); if(typeof renderCatList==='function') renderCatList(); if(typeof renderRecord==='function') renderRecord();
-        if($('setName')) $('setName').value=newName;
-        var blank={profile:getProfile(),cats:getCats(),records:[],savedAt:Date.now(),v:2};
-        ghPutFile(cfg.repo,cfg.branch,userJsonPath(newName),utf8ToB64(JSON.stringify(blank)),'new blank '+new Date().toISOString()).catch(function(){});
-        tip('「'+newName+'」云端还没有备份，已新建空白工作表','#1a9d5a');
-        toast('已新建 '+newName+' 的空白表');
+        newBlank();
       }
     } catch(e){
       if(/还没有备份文件/.test((e&&e.message)||'')){
-        tip('「'+newName+'」云端还没有备份，已保持当前数据','#c0392b');
-        toast('该名字还没有云端数据');
+        newBlank();
       } else {
         tip('⚠️ 切换失败：'+((e&&e.message)||e).toString().slice(0,40),'#c0392b');
         toast('切换失败');
