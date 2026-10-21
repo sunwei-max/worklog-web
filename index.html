@@ -813,17 +813,18 @@ function renderMonth(){
 }
 $('prevM').addEventListener('click',function(){ curMonth--; if(curMonth<1){curMonth=12;curYear--;} renderMonth(); });
 $('nextM').addEventListener('click',function(){ curMonth++; if(curMonth>12){curMonth=1;curYear++;} renderMonth(); });
-$('exportBtn').addEventListener('click',function(){
+$('exportBtn').addEventListener('click',async function(){
+  tip('正在同步最新数据…','#2f7de1');
+  try{ await doQuickSync(true); }catch(e){}   // 导出前先拉取云端最新，避免导出旧数据
   var md=monthData(curYear,curMonth);
   var name=getProfile().name||'';
   var anyData=md.cats.some(function(c){ return md.grid[c.id].total!==0; });
-  if(!anyData){ toast('本月暂无数据'); return; }
+  if(!anyData){ tip('本月暂无数据','#c0392b'); toast('本月暂无数据'); return; }
   var buf=buildXlsx(md,name);
   var mm=pad(curMonth);
   var safeName=name.trim()?name.trim():'本人';
   download(curYear+'年'+mm+'月个人工作量统计--'+safeName+'.xlsx', buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  toast('已导出 .xlsx');
-  scheduleAutoSync();
+  toast('已导出 .xlsx（已同步最新）');
 });
 
 /* =========================================================================
