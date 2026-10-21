@@ -891,11 +891,11 @@ $('addCat').addEventListener('click',function(){
   $('newCatName').value=''; $('newCatNote').value=''; $('newCatText').value=''; $('newCatNeg').checked=false;
   renderCatList(); renderRecord(); toast('已添加');
 });
-$('restoreCat').addEventListener('click',function(){
+$('restoreCat').addEventListener('click',async function(){
   if(confirm('恢复为科室原表全部默认类别？当前自定义类别将被覆盖，并从云端同步清除。')){
-    restoreCats(); renderCatList(); renderRecord();
-    doQuickSync(true).catch(function(){});   // 立即把“以默认类别为准”覆盖到云端，其他设备下次同步即生效
-    toast('已恢复默认并同步'); }
+    restoreCats(); renderCatList(); renderRecord(); renderMonth();   // 立即本地重置为 47 类默认类别
+    try{ await doQuickSync(true); }catch(e){}   // 等待同步完成，把“以默认类别为准”覆盖到云端，其他设备下次同步即生效
+    toast('已恢复默认类别并同步云端'); }
 });
 $('expJson').addEventListener('click',function(){
   var data={profile:getProfile(),cats:getCats(),records:getRecords()};
@@ -1005,19 +1005,25 @@ function gfetch(url,opt,ms){
   return fetch(url,opt).then(function(r){ if(timer) clearTimeout(timer); return r; },
                              function(e){ if(timer) clearTimeout(timer); throw e; });
 }
+// sha 缓存：ghGetFile 拉取时已顺带拿到文件 sha，PUT 时直接复用，省掉一次「GET 取 sha」网络往返（每次同步提速 ~1 个 RTT）
+var _shaCache={};
 async function ghPutFile(repo,branch,path,contentB64,msg){
   var repoEnc=repo.split('/').map(encodeURIComponent).join('/');
   var api='https://api.github.com/repos/'+repoEnc+'/contents/'+ghEncodePath(path);
+  var key=repo+'@'+branch+'#'+path;
   var head={'Authorization':'Bearer '+quickCfg().token,'Accept':'application/vnd.github+json','Content-Type':'application/json'};
-  var sha=null;
+  var sha=_shaCache[key]||null;
   for(var i=0;i<3;i++){
     if(!sha){
-      try{ var g=await gfetch(api+'?ref='+encodeURIComponent(branch)+'&t='+Date.now(),{headers:head,cache:'no-store'}); if(g.status===200){ sha=(await g.json()).sha; } }catch(e){}
+      try{ var g=await gfetch(api+'?ref='+encodeURIComponent(branch)+'&t='+Date.now(),{headers:head,cache:'no-store'}); if(g.status===200){ var gj=await g.json(); sha=gj.sha; _shaCache[key]=sha; } }catch(e){}
     }
     var body={message:msg,content:contentB64,branch:branch}; if(sha) body.sha=sha;
     var r=await gfetch(api,{method:'PUT',headers:head,body:JSON.stringify(body)});
-    if(r.status===200||r.status===201){ return true; }
-    if(r.status===409){ sha=null; await new Promise(function(x){setTimeout(x,800);}); continue; }
+    if(r.status===200||r.status===201){
+      try{ var rj=await r.json(); if(rj&&rj.content&&rj.content.sha) _shaCache[key]=rj.content.sha; }catch(e){}
+      return true;
+    }
+    if(r.status===409){ sha=null; _shaCache[key]=null; await new Promise(function(x){setTimeout(x,800);}); continue; }
     var err=await r.json().catch(function(){return{};}); throw new Error(err.message||('HTTP '+r.status));
   }
   throw new Error('更新冲突，请重试');
@@ -1052,12 +1058,14 @@ function b64ToUtf8(b64){
 async function ghGetFile(repo,branch,path){
   var repoEnc=repo.split('/').map(encodeURIComponent).join('/');
   var api='https://api.github.com/repos/'+repoEnc+'/contents/'+ghEncodePath(path);
+  var key=repo+'@'+branch+'#'+path;
   var head={'Authorization':'Bearer '+quickCfg().token,'Accept':'application/vnd.github+json'};
   // 必须禁止缓存：GitHub API 的响应默认带 60 秒缓存，同步时读到旧版本会直接覆盖对方新数据
   var r=await gfetch(api+'?ref='+encodeURIComponent(branch)+'&t='+Date.now(),{headers:head,cache:'no-store'});
   if(r.status===404) throw new Error('仓库中还没有备份文件，请先在另一端备份');
   if(!r.ok){ var e=await r.json().catch(function(){return {};}); throw new Error(e.message||('HTTP '+r.status)); }
   var d=await r.json();
+  if(d&&d.sha) _shaCache[key]=d.sha;   // 顺带缓存 sha，PUT 时复用，省一次网络往返
   return d.content;
 }
 async function restoreFromGitHub(){
@@ -1137,14 +1145,10 @@ async function pollSync(){
     safeRender();
     if($('setName')) $('setName').value=((getProfile().name)||'');
     // 本地若有云端没有的新增，或合并结果不同 → 写回云端，保持双端一致
+    // 注意：只回写 JSON 数据，不再每次重建并上传整月 xlsx（xlsx 由本地「导出」按钮按需生成，避免同步卡顿）
     if(recSig(getRecords())!==csig || catSig(getCats())!==ccsig){
       var p1={profile:getProfile(),cats:getCats(),records:getRecords(),savedAt:Date.now(),v:2};
       await ghPutFile(cfg.repo,cfg.branch,jpath,utf8ToB64(JSON.stringify(p1)),'sync '+new Date().toISOString()).catch(function(){});
-      try{
-        var md=monthData(curYear,curMonth);
-        var buf=buildXlsx(md,getProfile().name||'');
-        await ghPutFile(cfg.repo,cfg.branch,userXlsxPath(nm),b64enc(buf),'xlsx '+new Date().toISOString()).catch(function(){});
-      }catch(e){}
     }
   }catch(e){ /* 轮询静默：失败不提示，下次 60 秒后再试 */ }
 }
@@ -1430,11 +1434,6 @@ async function doQuickSync(silent,isBackup){
       localStorage.setItem(KEY_TS,String(p0.savedAt));
       tip('✅ 云端还没有备份，已把本机 '+local.records.length+' 条上传建档','#1a9d5a');
       if(!silent) toast(isBackup?'已备份并合并最新':'同步好了');
-      (function(){ try{
-        var md=monthData(curYear,curMonth);
-        var buf=buildXlsx(md,getProfile().name||'');
-        ghPutFile(cfg.repo,cfg.branch,userXlsxPath(nm),b64enc(buf),'xlsx '+new Date().toISOString()).catch(function(){});
-      }catch(e){} })();
       return;
     }
     // 合并：手机/电脑各自填的记录都保留，同一格取较新的一方
@@ -1468,11 +1467,6 @@ async function doQuickSync(silent,isBackup){
     var finalN=getRecords().length;
     tip('✅ 已合并两端数据（本机 '+before+' · 云端 '+cbefore+' → 汇总 '+finalN+' 条，已双向同步 '+fmtTime(Date.now())+'）','#1a9d5a');
     if(!silent) toast(isBackup?'已备份并合并最新':'同步好了');
-    (function(){ try{
-      var md=monthData(curYear,curMonth);
-      var buf=buildXlsx(md,getProfile().name||'');
-      ghPutFile(cfg.repo,cfg.branch,userXlsxPath(nm),b64enc(buf),'xlsx '+new Date().toISOString()).catch(function(){});
-    }catch(e){} })();
   }catch(e){
     tip('⚠️ 同步失败：'+((e&&e.message)||e),'#c0392b');
     if(!silent) toast(isBackup?'备份失败':'同步失败');
@@ -1481,8 +1475,8 @@ async function doQuickSync(silent,isBackup){
 
 (function(){
   var c=quickCfg(), t=localTs();
-  if(c.token && t) tip('上次同步 '+fmtTime(t)+' · 版本 v4 · 已自动同步', (Date.now()-t>86400000?'#c0392b':'#8a8f99'));
-  else tip('版本 v4 · 数据每 60 秒自动同步','#8a8f99');
+  if(c.token && t) tip('上次同步 '+fmtTime(t)+' · 版本 v6 · 已自动同步', (Date.now()-t>86400000?'#c0392b':'#8a8f99'));
+  else tip('版本 v6 · 数据每 60 秒自动同步','#8a8f99');
 })();
 
 /* =========================================================================
